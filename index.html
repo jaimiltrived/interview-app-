@@ -1,0 +1,514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Interview Prep Coach</title>
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="styles.css">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Chart.js for Beautiful Analytics -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <!-- Background Orbs -->
+    <div class="glow-orb orb-1"></div>
+    <div class="glow-orb orb-2"></div>
+
+    <!-- Application Layout -->
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <aside class="sidebar">
+            <div class="logo-container">
+                <div class="logo-icon">
+                    <i class="fa-solid fa-brain-circuit"></i>
+                </div>
+                <div class="logo-text">PrepCoach.AI</div>
+            </div>
+            
+            <nav class="menu-list">
+                <a class="menu-item active" onclick="app.switchPage('dashboard')">
+                    <i class="fa-solid fa-chart-pie"></i>
+                    <span>Dashboard</span>
+                </a>
+                <a class="menu-item" onclick="app.switchPage('resume')">
+                    <i class="fa-solid fa-file-invoice"></i>
+                    <span>Resume Upload</span>
+                </a>
+                <a class="menu-item" onclick="app.switchPage('interview')">
+                    <i class="fa-solid fa-video"></i>
+                    <span>Interview Room</span>
+                </a>
+                <a class="menu-item" onclick="app.switchPage('report')">
+                    <i class="fa-solid fa-square-poll-vertical"></i>
+                    <span>Feedback Report</span>
+                </a>
+            </nav>
+
+            <div class="user-profile">
+                <div class="user-avatar" id="sidebarAvatar">JS</div>
+                <div class="user-info">
+                    <div class="user-name" id="sidebarName">Candidate</div>
+                    <div class="user-title" id="sidebarTitle">Software Engineer</div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            
+            <!-- 1. DASHBOARD PAGE -->
+            <section id="page-dashboard" class="page active">
+                <div class="page-header">
+                    <h1 class="page-title">Welcome back, <span id="dashWelcomeName">Candidate</span></h1>
+                    <p class="page-desc">Track your progress and practice mock interviews to ace your dream job.</p>
+                </div>
+
+                <div class="card-grid">
+                    <div class="glass-card stat-card">
+                        <div class="stat-icon primary">
+                            <i class="fa-solid fa-circle-play"></i>
+                        </div>
+                        <div>
+                            <div class="stat-label">Total Sessions</div>
+                            <div class="stat-value" id="dashTotalSessions">0</div>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <div class="stat-icon secondary">
+                            <i class="fa-solid fa-star"></i>
+                        </div>
+                        <div>
+                            <div class="stat-label">Average Score</div>
+                            <div class="stat-value" id="dashAvgScore">--</div>
+                        </div>
+                    </div>
+                    <div class="glass-card stat-card">
+                        <div class="stat-icon accent">
+                            <i class="fa-solid fa-clock"></i>
+                        </div>
+                        <div>
+                            <div class="stat-label">Practice Time</div>
+                            <div class="stat-value" id="dashPracticeTime">0 mins</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card-grid" style="grid-template-columns: 1.8fr 1.2fr;">
+                    <!-- Action Panel -->
+                    <div class="glass-card">
+                        <h2 class="report-section-title">
+                            <i class="fa-solid fa-rocket"></i> Get Started
+                        </h2>
+                        <p class="mb-4" style="color: var(--text-muted); line-height: 1.6;">
+                            Upload your resume to let our AI parser customize interview questions specifically matching your profile and core technical skills. Alternatively, jump straight into standard interview practice.
+                        </p>
+                        <div style="display: flex; gap: 15px;">
+                            <button class="btn btn-primary" onclick="app.switchPage('resume')">
+                                <i class="fa-solid fa-upload"></i> Upload Resume
+                            </button>
+                            <button class="btn btn-secondary" onclick="app.startDirectInterview()">
+                                <i class="fa-solid fa-play"></i> Quick Start (General)
+                            </button>
+                        </div>
+                    </div>
+
+                    <!-- Profile Context -->
+                    <div class="glass-card">
+                        <h2 class="report-section-title">
+                            <i class="fa-solid fa-user-gear"></i> Target Job
+                        </h2>
+                        <div class="detail-row">
+                            <div class="detail-label">Current Role</div>
+                            <div class="detail-val" id="profileRole">Software Engineer (Generalist)</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">Key Focus Area</div>
+                            <div class="detail-val" id="profileFocus">Algorithms, System Design</div>
+                        </div>
+                        <div class="detail-row">
+                            <div class="detail-label">Dynamic Question Customization</div>
+                            <div class="detail-val text-success" id="profileStatus">
+                                <i class="fa-solid fa-circle-check"></i> Default Prompts Ready
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Session History -->
+                <div class="glass-card">
+                    <h2 class="report-section-title">
+                        <i class="fa-solid fa-clock-rotate-left"></i> Interview Practice History
+                    </h2>
+                    <div style="overflow-x: auto;">
+                        <table class="history-table">
+                            <thead>
+                                <tr>
+                                    <th>Date</th>
+                                    <th>Role Target</th>
+                                    <th>Overall Score</th>
+                                    <th>Technical</th>
+                                    <th>Communication</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody id="historyTableBody">
+                                <tr>
+                                    <td colspan="6" class="text-center" style="color: var(--text-muted); padding: 30px;">
+                                        No recent practice sessions. Complete your first interview to see history!
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 2. RESUME UPLOAD PAGE -->
+            <section id="page-resume" class="page">
+                <div class="page-header">
+                    <h1 class="page-title">Resume Parsing & Question Setup</h1>
+                    <p class="page-desc">Upload your resume to enable personalized questions matching your specific background.</p>
+                </div>
+
+                <div class="glass-card">
+                    <h2 class="report-section-title">
+                        <i class="fa-solid fa-file-arrow-up"></i> Upload Resume File
+                    </h2>
+                    <div class="upload-container" id="dropzone" onclick="document.getElementById('resumeFileInput').click()">
+                        <div class="upload-icon">
+                            <i class="fa-solid fa-cloud-arrow-up"></i>
+                        </div>
+                        <div class="upload-text">Drag & drop your resume file here or click to browse</div>
+                        <div class="upload-sub">Supports PDF, DOCX, TXT (Max size: 5MB)</div>
+                        <input type="file" id="resumeFileInput" style="display:none;" accept=".pdf,.docx,.txt">
+                    </div>
+
+                    <!-- Analysis Loader -->
+                    <div class="analysis-progress" id="parserProgress">
+                        <div class="progress-bar">
+                            <div class="progress-fill" id="parserProgressFill"></div>
+                        </div>
+                        <div class="analysis-step">
+                            <i class="fa-solid fa-circle-notch"></i>
+                            <span id="parserStatusText">Initializing AI Resume Parser...</span>
+                        </div>
+                    </div>
+
+                    <!-- Analysis Results Display (initially hidden) -->
+                    <div class="d-none" id="parserResults">
+                        <div class="resume-result-layout">
+                            <div class="resume-details">
+                                <h3><i class="fa-solid fa-clipboard-user"></i> Extracted Candidate Profile</h3>
+                                <div class="detail-row">
+                                    <div class="detail-label">Name</div>
+                                    <div class="detail-val" id="resExtName">Jane Doe</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label">Target Role</div>
+                                    <div class="detail-val text-success" id="resExtRole">Senior Frontend Developer</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label">Years of Experience</div>
+                                    <div class="detail-val" id="resExtExp">4 Years</div>
+                                </div>
+                                <div class="detail-row">
+                                    <div class="detail-label">Primary Technology Stack</div>
+                                    <div class="badge-container" id="resExtSkills">
+                                        <span class="badge primary">React.js</span>
+                                        <span class="badge primary">JavaScript</span>
+                                        <span class="badge primary">CSS Grid</span>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div class="resume-details">
+                                <h3><i class="fa-solid fa-circle-question"></i> Tailored AI Questions Generated</h3>
+                                <p style="color: var(--text-muted); font-size: 14px; margin-bottom: 15px;">
+                                    Based on the skills extracted, the coach has compiled target technical questions:
+                                </p>
+                                <ul style="list-style: none; display: flex; flex-direction: column; gap: 12px;" id="resExtQuestions">
+                                    <li><i class="fa-solid fa-chevron-right text-success"></i> Loading...</li>
+                                </ul>
+                            </div>
+                        </div>
+
+                        <div class="flex-row-center mt-4" style="justify-content: flex-end;">
+                            <button class="btn btn-secondary" onclick="app.resetParser()">
+                                <i class="fa-solid fa-rotate-left"></i> Re-Upload
+                            </button>
+                            <button class="btn btn-success" onclick="app.startInterviewFromResume()">
+                                <i class="fa-solid fa-circle-play"></i> Start Interview
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 3. INTERVIEW ROOM PAGE -->
+            <section id="page-interview" class="page">
+                <div class="page-header flex-between">
+                    <div>
+                        <h1 class="page-title">AI Interview Room</h1>
+                        <p class="page-desc">Maintain eye contact, limit filler words, and speak clearly into the microphone.</p>
+                    </div>
+                    <button class="btn btn-secondary" onclick="app.endInterviewEarly()">
+                        <i class="fa-solid fa-circle-stop text-error"></i> Exit Session
+                    </button>
+                </div>
+
+                <div class="interview-grid">
+                    <!-- Left: Camera Video Frame -->
+                    <div class="camera-container">
+                        <!-- Simulated overlays -->
+                        <div class="face-metrics-overlay">
+                            <div class="metric-pill success" id="overlayEyeContact">
+                                <i class="fa-solid fa-eye"></i>
+                                <span>Eye Contact: Tracking...</span>
+                            </div>
+                            <div class="metric-pill accent" id="overlayExpression">
+                                <i class="fa-solid fa-smile"></i>
+                                <span>Confidence: 85%</span>
+                            </div>
+                        </div>
+
+                        <!-- Real Camera Feed (falls back to coach avatar if no cam access) -->
+                        <video class="webcam-feed" id="webcam" autoplay playsinline muted></video>
+                        <canvas class="canvas-overlay" id="trackingCanvas"></canvas>
+                        
+                        <!-- Dynamic laser line scans -->
+                        <div class="scan-line"></div>
+                        
+                        <!-- Avatar placeholder for the AI Coach speaker when user looks at interviewer -->
+                        <div class="coach-avatar-feed d-none" id="coachAvatarFeed">
+                            <div class="coach-speaking-wave" id="speakingWave1"></div>
+                            <div class="coach-speaking-wave" id="speakingWave2"></div>
+                            <div class="coach-speaking-wave" id="speakingWave3"></div>
+                            
+                            <div class="coach-avatar-container">
+                                <i class="fa-solid fa-robot"></i>
+                            </div>
+                            <div class="coach-overlay-status">
+                                <div class="dot-pulse"></div>
+                                <span id="coachSpeechStatus">AI Coach Speaking...</span>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right: AI Question Console -->
+                    <div class="control-panel">
+                        <div class="glass-card question-card">
+                            <div>
+                                <div class="question-number" id="questionNumberIndicator">Question 1 of 3</div>
+                                <h3 class="question-text" id="activeQuestionText">AI is generating your prompt...</h3>
+                            </div>
+                            
+                            <div>
+                                <div class="transcript-label">Live Answer Transcript:</div>
+                                <div class="transcript-area" id="liveTranscriptText">
+                                    Click "Start Answering" and speak when ready...
+                                </div>
+
+                                <div class="flex-between">
+                                    <div class="flex-row-center">
+                                        <button class="btn btn-primary" id="btnSpeakToggle" onclick="app.toggleListening()">
+                                            <i class="fa-solid fa-microphone"></i> Start Answering
+                                        </button>
+                                        <button class="btn btn-secondary d-none" id="btnSkipQuestion" onclick="app.nextQuestion()">
+                                            Skip
+                                        </button>
+                                    </div>
+                                    <button class="btn btn-success d-none" id="btnSubmitAnswer" onclick="app.nextQuestion()">
+                                        Submit Answer <i class="fa-solid fa-arrow-right"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Real-time speech visualizer card -->
+                        <div class="glass-card visualizer-card">
+                            <div class="flex-between">
+                                <div class="stat-label">Audio Input Waveform</div>
+                                <span id="visualizerVolume" class="text-success" style="font-size: 12px; font-weight:600;">0dB</span>
+                            </div>
+                            <canvas class="visualizer-canvas" id="audioVisualizer"></canvas>
+                            <div class="flex-between" style="font-size: 11px; color: var(--text-muted);">
+                                <span id="speechWpmIndicator"><i class="fa-solid fa-gauge"></i> Speed: 0 WPM</span>
+                                <span id="speechFillerIndicator"><i class="fa-solid fa-triangle-exclamation"></i> Filler Words: 0</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- 4. FEEDBACK REPORT PAGE -->
+            <section id="page-report" class="page">
+                <div class="page-header">
+                    <h1 class="page-title">Session Performance Analysis</h1>
+                    <p class="page-desc">Comprehensive review of your interview pacing, content relevance, facial cues, and eye contact.</p>
+                </div>
+
+                <div class="report-grid">
+                    <!-- Left Columns -->
+                    <div style="display: flex; flex-direction: column; gap: 30px;">
+                        
+                        <!-- Core Metrics Circular Scores -->
+                        <div class="glass-card">
+                            <h2 class="report-section-title">
+                                <i class="fa-solid fa-award"></i> Core Performance Indicators
+                            </h2>
+                            <div class="score-summary-grid">
+                                <div class="text-center">
+                                    <div class="score-circle-wrapper">
+                                        <svg class="score-circle-svg">
+                                            <circle class="score-circle-bg" cx="50" cy="50" r="45"></circle>
+                                            <circle class="score-circle-fill" id="scoreOverallFill" cx="50" cy="50" r="45"></circle>
+                                        </svg>
+                                        <div class="score-circle-text" id="scoreOverallText">--</div>
+                                    </div>
+                                    <div class="stat-label">Overall Interview Score</div>
+                                </div>
+
+                                <div class="text-center">
+                                    <div class="score-circle-wrapper">
+                                        <svg class="score-circle-svg">
+                                            <circle class="score-circle-bg" cx="50" cy="50" r="45"></circle>
+                                            <circle class="score-circle-fill" id="scoreTechFill" cx="50" cy="50" r="45" style="stroke: var(--secondary);"></circle>
+                                        </svg>
+                                        <div class="score-circle-text" id="scoreTechText">--</div>
+                                    </div>
+                                    <div class="stat-label">Technical Score</div>
+                                </div>
+
+                                <div class="text-center">
+                                    <div class="score-circle-wrapper">
+                                        <svg class="score-circle-svg">
+                                            <circle class="score-circle-bg" cx="50" cy="50" r="45"></circle>
+                                            <circle class="score-circle-fill" id="scoreCommFill" cx="50" cy="50" r="45" style="stroke: var(--accent);"></circle>
+                                        </svg>
+                                        <div class="score-circle-text" id="scoreCommText">--</div>
+                                    </div>
+                                    <div class="stat-label">Communication Score</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Real-time metrics details charts -->
+                        <div class="glass-card">
+                            <h2 class="report-section-title">
+                                <i class="fa-solid fa-chart-line"></i> Speech Quality & Eye Contact Over Time
+                            </h2>
+                            <div class="chart-container">
+                                <canvas id="performanceChart"></canvas>
+                            </div>
+                        </div>
+
+                        <!-- Full Questions transcript details -->
+                        <div class="glass-card">
+                            <h2 class="report-section-title">
+                                <i class="fa-solid fa-comments"></i> Question & Answer Transcript
+                            </h2>
+                            <div id="fullReportTranscripts" style="display: flex; flex-direction: column; gap: 20px;">
+                                <p style="color: var(--text-muted); font-size: 14px;">No transcipts available yet. Complete an interview to review answers.</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Right Column (Suggestions) -->
+                    <div style="display: flex; flex-direction: column; gap: 30px;">
+                        
+                        <!-- Stats Breakdown Box -->
+                        <div class="glass-card">
+                            <h2 class="report-section-title">
+                                <i class="fa-solid fa-sliders"></i> Metrics Breakdown
+                            </h2>
+                            <div class="detail-row">
+                                <div class="detail-label">Speaking Pacing</div>
+                                <div class="detail-val" id="repPacing">-- WPM (Normal is 120-160)</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Filler Words Flagged</div>
+                                <div class="detail-val" id="repFiller">0 words</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Eye Contact Score</div>
+                                <div class="detail-val" id="repEyeContact">0%</div>
+                            </div>
+                            <div class="detail-row">
+                                <div class="detail-label">Confidence Indicator</div>
+                                <div class="detail-val" id="repExpression">Confident</div>
+                            </div>
+                        </div>
+
+                        <!-- Improvement suggestions list -->
+                        <div class="glass-card">
+                            <h2 class="report-section-title">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> AI Coaching Insights
+                            </h2>
+                            <div class="suggestions-list" id="coachingSuggestionsBox">
+                                <div class="suggestion-item warning">
+                                    <div class="suggestion-item-icon"><i class="fa-solid fa-triangle-exclamation"></i></div>
+                                    <div class="suggestion-item-text">
+                                        <h4>Sample Insight</h4>
+                                        <p>Insights will appear after analyzing your response metrics.</p>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Actions -->
+                        <div style="display: flex; flex-direction: column; gap: 10px;">
+                            <button class="btn btn-primary" onclick="app.restartInterview()">
+                                <i class="fa-solid fa-rotate-left"></i> Practice Again
+                            </button>
+                            <button class="btn btn-secondary" onclick="app.switchPage('dashboard')">
+                                <i class="fa-solid fa-house"></i> Return to Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- INITIAL USER SETUP MODAL (shown at beginning of session if profile details are missing) -->
+    <div class="setup-overlay" id="setupOverlay">
+        <div class="glass-card setup-card">
+            <h2 class="mb-4" style="font-family:'Outfit',sans-serif; font-size:24px; font-weight:800;">
+                Configure Your AI Interview Profile
+            </h2>
+            <p style="color: var(--text-muted); font-size:14px; margin-bottom: 20px;">
+                Enter your details to train the AI Coach on your goals and test your audio/video access.
+            </p>
+            
+            <div style="text-align: left; display: flex; flex-direction: column; gap: 15px; margin-bottom: 25px;">
+                <div>
+                    <label class="detail-label" style="margin-bottom: 5px; display:block;">Your Name</label>
+                    <input type="text" id="setupName" value="John Doe" style="width:100%; padding:12px; border-radius:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color); color:white; font-size:14px; outline:none; transition: border 0.3s;" onfocus="this.style.borderColor='var(--secondary)'" onblur="this.style.borderColor='var(--border-color)'">
+                </div>
+                <div>
+                    <label class="detail-label" style="margin-bottom: 5px; display:block;">Target Job/Role</label>
+                    <input type="text" id="setupRole" value="Software Engineer" style="width:100%; padding:12px; border-radius:10px; background:rgba(0,0,0,0.3); border:1px solid var(--border-color); color:white; font-size:14px; outline:none; transition: border 0.3s;" onfocus="this.style.borderColor='var(--secondary)'" onblur="this.style.borderColor='var(--border-color)'">
+                </div>
+                <div>
+                    <label class="detail-label" style="margin-bottom: 5px; display:block;">Webcam & Mic Permissions Test</label>
+                    <button class="btn btn-secondary" id="btnTestDevices" onclick="app.requestMediaPermissions()" style="width: 100%; font-size:13px; padding:10px;">
+                        <i class="fa-solid fa-camera"></i> Connect & Test Devices
+                    </button>
+                    <div id="deviceTestStatus" style="font-size: 12px; text-align:center; margin-top: 8px; color: var(--text-muted);">
+                        Not connected yet.
+                    </div>
+                </div>
+            </div>
+
+            <button class="btn btn-primary" style="width: 100%;" onclick="app.saveSetup()">
+                Save & Proceed <i class="fa-solid fa-chevron-right"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- Application Script -->
+    <script src="app.js"></script>
+</body>
+</html>
