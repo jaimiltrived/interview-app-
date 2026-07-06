@@ -320,9 +320,13 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
         expression: confidence
       };
 
+      const token = localStorage.getItem('coach_jwt_token');
       const res = await fetch('/api/interview/submit', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        },
         body: JSON.stringify(sessionPayload)
       });
       const data = await res.json();

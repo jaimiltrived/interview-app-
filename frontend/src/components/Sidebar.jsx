@@ -1,6 +1,6 @@
 import React from 'react';
 
-export default function Sidebar({ currentPage, switchPage, userProfile }) {
+export default function Sidebar({ currentPage, switchPage, userProfile, onLogout }) {
   // Get initials for profile avatar
   const initials = userProfile.name
     ? userProfile.name
@@ -20,7 +20,7 @@ export default function Sidebar({ currentPage, switchPage, userProfile }) {
         <div className="logo-text">PrepCoach.AI</div>
       </div>
 
-      <nav className="menu-list">
+      <nav className="menu-list" style={{ flexGrow: 1 }}>
         <a 
           className={`menu-item ${currentPage === 'dashboard' ? 'active' : ''}`}
           onClick={() => switchPage('dashboard')}
@@ -51,12 +51,23 @@ export default function Sidebar({ currentPage, switchPage, userProfile }) {
         </a>
       </nav>
 
-      <div className="user-profile">
-        <div className="user-avatar">{initials}</div>
-        <div className="user-info">
-          <div className="user-name">{userProfile.name}</div>
-          <div className="user-title">{userProfile.role}</div>
+      <div className="user-profile" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', borderTop: '1px solid var(--border-color)', paddingTop: '15px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+          <div className="user-avatar" style={{ flexShrink: 0 }}>{initials}</div>
+          <div className="user-info" style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis' }}>
+            <div className="user-name" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{userProfile.name}</div>
+            <div className="user-title" style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{userProfile.role}</div>
+          </div>
         </div>
+        <button 
+          onClick={onLogout} 
+          style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', padding: '6px', borderRadius: '6px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          title="Sign Out"
+          onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}
+          onMouseLeave={(e) => e.currentTarget.style.color = 'var(--text-muted)'}
+        >
+          <i className="fa-solid fa-arrow-right-from-bracket"></i>
+        </button>
       </div>
     </aside>
   );

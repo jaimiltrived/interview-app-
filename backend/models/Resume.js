@@ -1,27 +1,50 @@
-const mongoose = require('mongoose');
+const { getPool, getDBStatus } = require('../config/db');
 
-const ResumeSchema = new mongoose.Schema({
-  name: {
-    type: String,
-    required: true,
-    default: 'Candidate'
-  },
-  roleTarget: {
-    type: String,
-    required: true
-  },
-  experience: {
-    type: String,
-    default: '1-2 Years'
-  },
-  skills: {
-    type: [String],
-    default: []
-  },
-  createdAt: {
-    type: Date,
-    default: Date.now
+let memoryResumes = [];
+
+class Resume {
+  static getMemoryResumes() { return memoryResumes; }
+
+  static async create({ userId, name, roleTarget, experience, skills }) {
+    const skillsJson = JSON.stringify(skills);
+    if (getDBStatus()) {
+      const [result] = await getPool().query(
+        'INSERT INTO resumes (user_id, name, role_target, experience, skills) VALUES (?, ?, ?, ?, ?)',
+        [userId, name, roleTarget, experience, skillsJson]
+      );
+      return result.insertId;
+    } else {
+      const id = memoryResumes.length + 1;
+      memoryResumes.push({ id, userId, name, roleTarget, experience, skills });
+      return id;
+    }
   }
-});
 
-module.exports = mongoose.model('Resume', ResumeSchema);
+  static async listByCandidate(candidateName) {
+    if (getDBStatus()) {
+      const [rows] = await getPool().query('SELECT * FROM resumes WHERE name = ? ORDER BY id DESC', [candidateName]);
+      return rows;
+    } else {
+      return memoryResumes.filter(r => r.name === candidateName);
+    }
+  }
+
+  static async findByIdAndCandidate(id, candidateName) {
+    if (getDBStatus()) {
+      const [rows] = await getPool().query('SELECT * FROM resumes WHERE id = ? AND name = ?', [id, candidateName]);
+      return rows[0] || null;
+    } else {
+      return memoryResumes.find(r => String(r.id) === String(id) && r.name === candidateName) || null;
+    }
+  }
+
+  static async delete(id, candidateName) {
+    if (getDBStatus()) {
+      await getPool().query('DELETE FROM resumes WHERE id = ? AND name = ?', [id, candidateName]);
+    } else {
+      memoryResumes = memoryResumes.filter(r => !(String(r.id) === String(id) && r.name === candidateName));
+    }
+  }
+}
+
+module.exports = Resume;

@@ -4,24 +4,27 @@ import Dashboard from './pages/Dashboard';
 import ResumeUpload from './pages/ResumeUpload';
 import InterviewRoom from './pages/InterviewRoom';
 import FeedbackReport from './pages/FeedbackReport';
+import Login from './pages/Login';
+import Register from './pages/Register';
 
 export default function App() {
+  const [token, setToken] = useState(localStorage.getItem('coach_jwt_token'));
+  const [authView, setAuthView] = useState('login'); // 'login' or 'register'
+  
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [userProfile, setUserProfile] = useState({
-    name: 'Jane Doe',
-    role: 'Software Engineer',
-    skills: ['JavaScript', 'System Design', 'Web APIs'],
+    name: localStorage.getItem('coach_user_name') || 'Candidate',
+    role: localStorage.getItem('coach_user_role') || 'Software Engineer',
+    skills: ['React.js', 'JavaScript', 'CSS Grid'],
     experience: '2 Years',
     questions: []
   });
   
   const [selectedReportId, setSelectedReportId] = useState(null);
   const [sessionHistory, setSessionHistory] = useState([]);
-  const [showSetup, setShowSetup] = useState(false);
-  const [setupFields, setSetupFields] = useState({ name: 'Jane Doe', role: 'Software Engineer' });
   const [dbStatus, setDbStatus] = useState({ databaseConnected: false, storageMode: 'Checking...' });
 
-  // Load profile and history
+  // Load profile and history when token changes
   useEffect(() => {
     // Check DB Status
     fetch('/api/status')
@@ -29,68 +32,74 @@ export default function App() {
       .then(data => setDbStatus(data))
       .catch(e => console.warn('Backend server connection failed:', e));
 
-    const savedName = localStorage.getItem('coach_user_name');
-    const savedRole = localStorage.getItem('coach_user_role');
-    const savedSkills = localStorage.getItem('coach_user_skills');
-
-    if (savedName) {
-      const parsedSkills = savedSkills ? JSON.parse(savedSkills) : ['React.js', 'JavaScript', 'CSS Grid'];
-      setUserProfile(prev => ({
-        ...prev,
-        name: savedName,
-        role: savedRole || 'Software Engineer',
-        skills: parsedSkills
-      }));
-      setSetupFields({ name: savedName, role: savedRole || 'Software Engineer' });
-    } else {
-      setShowSetup(true);
+    if (token) {
+      fetchProfile(token);
+      fetchHistory(token);
     }
-    
-    fetchHistory();
-  }, []);
+  }, [token]);
 
-  const fetchHistory = () => {
-    fetch('/api/history')
+  const fetchProfile = (jwtToken) => {
+    fetch('/api/profile', {
+      headers: { 'Authorization': `Bearer ${jwtToken}` }
+    })
+      .then(r => {
+        if (r.status === 401) {
+          handleLogout();
+          throw new Error('Unauthorized');
+        }
+        return r.json();
+      })
+      .then(data => {
+        if (data && data.name) {
+          setUserProfile(prev => ({
+            ...prev,
+            name: data.name,
+            role: localStorage.getItem('coach_user_role') || prev.role,
+            skills: data.skills && data.skills.length > 0 ? data.skills : prev.skills
+          }));
+        }
+      })
+      .catch(e => console.warn('Could not fetch user profile details:', e));
+  };
+
+  const fetchHistory = (jwtToken) => {
+    fetch('/api/history', {
+      headers: { 'Authorization': `Bearer ${jwtToken || token}` }
+    })
       .then(r => r.json())
-      .then(data => setSessionHistory(data))
+      .then(data => {
+        if (Array.isArray(data)) {
+          setSessionHistory(data);
+        }
+      })
       .catch(err => {
         console.warn('Could not load history from backend, falling back to localState.', err);
       });
   };
 
-  const handleSaveSetup = () => {
-    if (!setupFields.name.trim()) {
-      alert('Please enter your name.');
-      return;
-    }
+  const handleLoginSuccess = (user, jwtToken) => {
+    setToken(jwtToken);
+    setUserProfile(prev => ({
+      ...prev,
+      name: user.name,
+      role: localStorage.getItem('coach_user_role') || 'Software Engineer'
+    }));
+    setCurrentPage('dashboard');
+  };
 
-    let defaultSkills = ['Algorithms', 'Problem Solving', 'System Design'];
-    if (setupFields.role.toLowerCase().includes('react') || setupFields.role.toLowerCase().includes('frontend')) {
-      defaultSkills = ['React.js', 'JavaScript', 'CSS Grid', 'Tailwind CSS'];
-    } else if (setupFields.role.toLowerCase().includes('laravel') || setupFields.role.toLowerCase().includes('php') || setupFields.role.toLowerCase().includes('backend')) {
-      defaultSkills = ['PHP', 'Laravel', 'MySQL', 'REST APIs'];
-    }
-
-    localStorage.setItem('coach_user_name', setupFields.name);
-    localStorage.setItem('coach_user_role', setupFields.role);
-    localStorage.setItem('coach_user_skills', JSON.stringify(defaultSkills));
-
-    setUserProfile({
-      name: setupFields.name,
-      role: setupFields.role,
-      skills: defaultSkills,
-      experience: '2 Years',
-      questions: []
-    });
-
-    setShowSetup(false);
+  const handleLogout = () => {
+    localStorage.removeItem('coach_jwt_token');
+    localStorage.removeItem('coach_user_name');
+    localStorage.removeItem('coach_user_email');
+    setToken(null);
+    setAuthView('login');
     setCurrentPage('dashboard');
   };
 
   // Switch and trigger updates
   const handlePageSwitch = (pageId) => {
-    if (pageId === 'dashboard') {
-      fetchHistory();
+    if (pageId === 'dashboard' && token) {
+      fetchHistory(token);
     }
     setCurrentPage(pageId);
   };
@@ -110,6 +119,40 @@ export default function App() {
     setCurrentPage('report');
   };
 
+  if (!token) {
+    return (
+      <>
+        <div className="glow-orb orb-1"></div>
+        <div className="glow-orb orb-2"></div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' }}>
+          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 20px', borderRadius: '20px', border: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '30px', display: 'flex', gap: '15px' }}>
+            <div>
+              DB Status:{' '}
+              <span style={{ color: dbStatus.databaseConnected ? 'var(--success)' : 'var(--warning)', fontWeight: 'bold' }}>
+                {dbStatus.databaseConnected ? 'MySQL Connected' : 'Mock Mode (Offline DB)'}
+              </span>
+            </div>
+            <span>|</span>
+            <div>
+              Storage: <span style={{ color: 'white', fontWeight: 'bold' }}>{dbStatus.storageMode || 'Checking...'}</span>
+            </div>
+          </div>
+          {authView === 'login' ? (
+            <Login 
+              onLoginSuccess={handleLoginSuccess} 
+              switchToRegister={() => setAuthView('register')} 
+            />
+          ) : (
+            <Register 
+              onRegisterSuccess={() => setAuthView('login')} 
+              switchToLogin={() => setAuthView('login')} 
+            />
+          )}
+        </div>
+      </>
+    );
+  }
+
   return (
     <>
       <div className="glow-orb orb-1"></div>
@@ -121,6 +164,7 @@ export default function App() {
           currentPage={currentPage} 
           switchPage={handlePageSwitch} 
           userProfile={userProfile} 
+          onLogout={handleLogout}
         />
 
         {/* Content Right */}
@@ -148,7 +192,7 @@ export default function App() {
               userProfile={userProfile}
               switchPage={handlePageSwitch}
               onFinish={() => {
-                fetchHistory();
+                if (token) fetchHistory(token);
                 setSelectedReportId('latest'); // Tell report component to fetch the newly completed session
                 setCurrentPage('report');
               }}
@@ -164,54 +208,6 @@ export default function App() {
           )}
         </main>
       </div>
-
-      {/* Setup Dialog */}
-      {showSetup && (
-        <div className="setup-overlay">
-          <div className="glass-card setup-card" style={{ maxWidth: '460px', width: '90%' }}>
-            <h2 className="mb-4" style={{ fontFamily: 'Outfit, sans-serif', fontSize: '24px', fontWeight: '800' }}>
-              Configure AI Interview Profile
-            </h2>
-            <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '20px' }}>
-              Enter your target details to customize questions and test your audio/video devices.
-            </p>
-
-            <div style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px', marginBottom: '25px' }}>
-              <div>
-                <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Your Name</label>
-                <input 
-                  type="text" 
-                  value={setupFields.name}
-                  onChange={(e) => setSetupFields({ ...setupFields, name: e.target.value })}
-                  style={{ width: '100%', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
-              <div>
-                <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Target Job / Role</label>
-                <input 
-                  type="text" 
-                  value={setupFields.role}
-                  onChange={(e) => setSetupFields({ ...setupFields, role: e.target.value })}
-                  style={{ width: '100%', padding: '12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
-                />
-              </div>
-              <div style={{ background: 'rgba(255,255,255,0.02)', padding: '12px', borderRadius: '10px', border: '1px solid var(--border-color)', fontSize: '12px', color: 'var(--text-muted)' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                  <span>DB Status:</span>
-                  <span style={{ color: dbStatus.databaseConnected ? 'var(--success)' : 'var(--warning)', fontWeight: 'bold' }}>
-                    {dbStatus.databaseConnected ? 'MySQL Connected' : 'Mock Mode (Offline DB)'}
-                  </span>
-                </div>
-                <span>Server Fallback is active. The application will store sessions in memory if MySQL server is offline.</span>
-              </div>
-            </div>
-
-            <button className="btn btn-primary" style={{ width: '100%' }} onClick={handleSaveSetup}>
-              Save & Proceed <i className="fa-solid fa-chevron-right"></i>
-            </button>
-          </div>
-        </div>
-      )}
     </>
   );
 }

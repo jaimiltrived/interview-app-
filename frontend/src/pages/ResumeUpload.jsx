@@ -54,9 +54,13 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
         } else {
           // Finished animation, trigger backend upload API
           try {
+            const token = localStorage.getItem('coach_jwt_token');
             const res = await fetch('/api/resume/upload', {
               method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
               body: JSON.stringify({
                 fileName: file.name,
                 fileContent: fileText,

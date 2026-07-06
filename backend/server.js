@@ -5,6 +5,8 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const { connectDB } = require('./config/db');
 const apiRoutes = require('./routes/api');
+const swaggerPaths = require('./config/swaggerPaths');
+const errorHandler = require('./middleware/errorHandler');
 
 // Load environment variables
 dotenv.config();
@@ -19,19 +21,26 @@ const swaggerOptions = {
     info: {
       title: 'AI Interview Coach API Documentation',
       version: '1.0.0',
-      description: 'Interactive API documentation details for candidates profile matching, resume parses, interview room metrics scoring, and practice logs.',
-      contact: {
-        name: 'PrepCoach AI Developer'
-      }
+      description: 'Interactive API documentation details for candidates profile matching, resume parses, interview room metrics scoring, and practice logs.'
     },
     servers: [
       {
         url: `http://localhost:${PORT}`,
         description: 'Development local server'
       }
-    ]
+    ],
+    components: {
+      securitySchemes: {
+        bearerAuth: {
+          type: 'http',
+          scheme: 'bearer',
+          bearerFormat: 'JWT'
+        }
+      }
+    },
+    paths: swaggerPaths
   },
-  apis: ['./routes/*.js', './backend/routes/*.js'] // include both patterns in case directory resolves from project root
+  apis: [] // Disable file scanning so only our unified 95 paths list is displayed cleanly
 };
 
 const swaggerSpec = swaggerJsdoc(swaggerOptions);
@@ -58,6 +67,9 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // API Routes prefix
 app.use('/api', apiRoutes);
+
+// Global Error Handler Middleware
+app.use(errorHandler);
 
 // Start Server
 app.listen(PORT, () => {

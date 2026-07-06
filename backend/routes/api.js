@@ -1,6 +1,48 @@
 const express = require('express');
 const router = express.Router();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+const authMiddleware = require('../middleware/auth');
 const { getPool, getDBStatus } = require('../config/db');
+
+// --- Models & Middlewares ---
+const User = require('../models/User');
+const Resume = require('../models/Resume');
+const Session = require('../models/Session');
+const { validateRegistration, validateLogin } = require('../middleware/validation');
+
+// --- Google Gemini AI API Helper ---
+const callGemini = async (prompt, fallbackText) => {
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey) {
+    console.log('[GEMINI] API key not found. Using local fallback.');
+    return fallbackText;
+  }
+
+  try {
+    const response = await fetch(
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error(`Gemini API returned status ${response.status}`);
+    }
+
+    const data = await response.json();
+    const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (result) return result.trim();
+  } catch (err) {
+    console.error('[GEMINI ERROR]', err.message);
+  }
+  return fallbackText;
+};
 
 // --- In-Memory State Mocks (Fallback if MySQL is offline) ---
 let memoryUsers = [
@@ -60,28 +102,16 @@ const queryDB = async (sql, params = []) => {
  *     responses:
  *       201: { description: User registered successfully }
  */
-router.post('/auth/register', async (req, res) => {
+router.post('/auth/register', validateRegistration, async (req, res) => {
   try {
     const { name, email, password } = req.body;
-    if (!name || !email || !password) {
-      return res.status(400).json({ error: 'Name, email and password are required' });
+    const existing = await User.findByEmail(email);
+    if (existing) {
+      return res.status(400).json({ error: 'User email already exists' });
     }
 
-    if (getDBStatus()) {
-      // Check if user already exists
-      const existing = await queryDB('SELECT * FROM users WHERE email = ?', [email]);
-      if (existing.length > 0) {
-        return res.status(400).json({ error: 'User email already exists' });
-      }
-      
-      await queryDB('INSERT INTO users (name, email, password) VALUES (?, ?, ?)', [name, email, password]);
-    } else {
-      const existing = memoryUsers.find(u => u.email === email);
-      if (existing) return res.status(400).json({ error: 'User email already exists' });
-      
-      memoryUsers.push({ id: memoryUsers.length + 1, name, email, password, photo_url: null, skills: '' });
-    }
-    
+    const hashedPassword = await bcrypt.hash(password, 10);
+    await User.create({ name, email, password: hashedPassword });
     res.status(201).json({ success: true, message: 'User registered successfully' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -107,25 +137,29 @@ router.post('/auth/register', async (req, res) => {
  *     responses:
  *       200: { description: Login successful, returns token }
  */
-router.post('/auth/login', async (req, res) => {
+router.post('/auth/login', validateLogin, async (req, res) => {
   try {
     const { email, password } = req.body;
-    let userRecord = null;
-
-    if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM users WHERE email = ? AND password = ?', [email, password]);
-      if (rows.length > 0) userRecord = rows[0];
-    } else {
-      userRecord = memoryUsers.find(u => u.email === email && u.password === password);
-    }
+    const userRecord = await User.findByEmail(email);
 
     if (!userRecord) {
       return res.status(401).json({ error: 'Invalid email or password credentials' });
     }
 
+    const isMatch = await bcrypt.compare(password, userRecord.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid email or password credentials' });
+    }
+
+    const token = jwt.sign(
+      { id: userRecord.id, name: userRecord.name, email: userRecord.email },
+      process.env.JWT_SECRET || 'fallback_secret_key',
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
+    );
+
     res.json({
       success: true,
-      token: 'jwt_mock_token_' + Math.random().toString(36).substring(2),
+      token,
       user: { id: userRecord.id, name: userRecord.name, email: userRecord.email }
     });
   } catch (err) {
@@ -212,6 +246,14 @@ router.post('/auth/change-password', (req, res) => {
 });
 
 
+router.get('/status', (req, res) => {
+  res.json({
+    databaseConnected: getDBStatus(),
+    storageMode: getDBStatus() ? 'MySQL Server' : 'In-Memory (Fallback)'
+  });
+});
+
+
 // ==========================================
 // 2. USER PROFILE MODULE (6 APIs)
 // ==========================================
@@ -225,10 +267,11 @@ router.post('/auth/change-password', (req, res) => {
  *     responses:
  *       200: { description: Details returned }
  */
-router.get('/profile', async (req, res) => {
+router.get('/profile', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM users ORDER BY id ASC LIMIT 1');
+      const rows = await queryDB('SELECT * FROM users WHERE id = ?', [userId]);
       if (rows.length > 0) {
         return res.json({
           id: rows[0].id,
@@ -239,14 +282,17 @@ router.get('/profile', async (req, res) => {
         });
       }
     }
-    // Fallback to first user in memory
-    res.json({
-      id: memoryUsers[0].id,
-      name: memoryUsers[0].name,
-      email: memoryUsers[0].email,
-      photoUrl: memoryUsers[0].photo_url,
-      skills: memoryUsers[0].skills ? memoryUsers[0].skills.split(',') : []
-    });
+    const user = memoryUsers.find(u => u.id === userId);
+    if (user) {
+      return res.json({
+        id: user.id,
+        name: user.name,
+        email: user.email,
+        photoUrl: user.photo_url,
+        skills: user.skills ? user.skills.split(',') : []
+      });
+    }
+    res.status(404).json({ error: 'User not found' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -270,14 +316,18 @@ router.get('/profile', async (req, res) => {
  *     responses:
  *       200: { description: Profile updated }
  */
-router.put('/profile/update', async (req, res) => {
+router.put('/profile/update', authMiddleware, async (req, res) => {
   try {
     const { name, email } = req.body;
+    const userId = req.user.id;
     if (getDBStatus()) {
-      await queryDB('UPDATE users SET name = ?, email = ? ORDER BY id ASC LIMIT 1', [name, email]);
+      await queryDB('UPDATE users SET name = ?, email = ? WHERE id = ?', [name, email, userId]);
     } else {
-      memoryUsers[0].name = name || memoryUsers[0].name;
-      memoryUsers[0].email = email || memoryUsers[0].email;
+      const user = memoryUsers.find(u => u.id === userId);
+      if (user) {
+        user.name = name || user.name;
+        user.email = email || user.email;
+      }
     }
     res.json({ success: true, message: 'Profile updated' });
   } catch (err) {
@@ -391,9 +441,10 @@ router.delete('/profile/delete-account', async (req, res) => {
 // 3. RESUME MODULE (7 APIs)
 // ==========================================
 
-router.post('/resume/upload', async (req, res) => {
+router.post('/resume/upload', authMiddleware, async (req, res) => {
   try {
-    const { fileName, fileContent, candidateName = 'Candidate' } = req.body;
+    const { fileName, fileContent } = req.body;
+    const candidateName = req.user.name || 'Candidate';
     if (!fileName) return res.status(400).json({ error: 'File name is required' });
 
     const textToAnalyze = (fileContent || fileName).toLowerCase();
@@ -402,58 +453,99 @@ router.post('/resume/upload', async (req, res) => {
     let experience = '1-2 Years';
     let questions = [];
 
-    const techSkills = {
-      'React': ['react', 'react.js', 'redux', 'hooks', 'jsx', 'frontend'],
-      'JavaScript': ['javascript', 'js', 'es6', 'typescript', 'ts'],
-      'Laravel': ['laravel', 'php', 'composer', 'eloquent'],
-      'Python': ['python', 'fastapi', 'flask', 'django'],
-      'MySQL': ['mysql', 'sql', 'database', 'postgresql'],
-      'Firebase': ['firebase', 'firestore', 'auth'],
-      'Tailwind CSS': ['tailwind', 'css', 'flexbox', 'grid'],
-      'Node.js': ['node', 'node.js', 'express', 'backend']
-    };
+    let isParsedByAI = false;
+    if (process.env.GEMINI_API_KEY && fileContent) {
+      const prompt = `You are a professional resume parser. Parse the following resume content and extract:
+      1. Target Job Role (e.g. Frontend Developer, Laravel Engineer, Backend Developer)
+      2. Core technical skills (array of strings, e.g. ["React", "JavaScript", "Node.js"])
+      3. Experience range rating (e.g. 5+ Years (Senior), 3-4 Years (Mid-level), 1-2 Years (Associate))
+      4. Generate 3 highly technical interview questions tailored specifically to these skills and experience level.
+      
+      Resume Content:
+      ${fileContent}
+      
+      Output a valid JSON response format:
+      {
+        "roleTarget": "Role Title",
+        "skills": ["Skill1", "Skill2"],
+        "experience": "Experience Info",
+        "questions": ["Q1", "Q2", "Q3"]
+      }
+      Only output valid JSON, no backticks, no markdown blocks.`;
 
-    for (const [skill, keywords] of Object.entries(techSkills)) {
-      if (keywords.some(kw => textToAnalyze.includes(kw))) skills.push(skill);
-    }
-    if (skills.length === 0) skills = ['React.js', 'JavaScript', 'CSS Grid'];
-
-    if (skills.includes('Laravel')) {
-      inferredRole = 'Fullstack Engineer (Laravel & React)';
-      questions = [
-        "Can you explain the request lifecycle in Laravel, specifically how Middleware works?",
-        "How do you design database relations in Laravel Eloquent and avoid the N+1 query problem?",
-        "Tell me about a time you had to build a RESTful API. How did you structure the endpoints and handle authorization?"
-      ];
-    } else if (skills.includes('React') || skills.includes('JavaScript')) {
-      inferredRole = 'Frontend Developer (React)';
-      questions = [
-        "What is the Virtual DOM in React, and how do React Hooks like useEffect manage state synchronization?",
-        "How do you optimize performance in a React application with heavy rendering loads?",
-        "Explain the difference between flexbox and grid, and how you make layouts fully responsive."
-      ];
-    } else if (skills.includes('Python')) {
-      inferredRole = 'Backend Python Developer';
-      questions = [
-        "Explain how asynchronous programming works in Python FastAPI using async/await keywords.",
-        "How do you handle database migrations, serialization, and connection pooling in a backend application?",
-        "How do you secure API endpoints against common threats like SQL injection and cross-site scripting?"
-      ];
-    } else {
-      inferredRole = 'Software Engineer';
-      questions = [
-        "Could you start by introducing yourself and walking me through your background and key strengths?",
-        "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
-        "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
-      ];
+      try {
+        const geminiResult = await callGemini(prompt, '');
+        if (geminiResult) {
+          const cleaned = geminiResult.replace(/```json/g, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleaned);
+          if (parsed.roleTarget && parsed.skills && parsed.questions) {
+            inferredRole = parsed.roleTarget;
+            skills = parsed.skills;
+            experience = parsed.experience || experience;
+            questions = parsed.questions;
+            isParsedByAI = true;
+            console.log('[GEMINI] Successfully parsed resume and generated questions!');
+          }
+        }
+      } catch (err) {
+        console.error('[GEMINI] Error parsing resume with AI, falling back to keywords:', err.message);
+      }
     }
 
-    if (textToAnalyze.includes('senior') || textToAnalyze.includes('lead') || textToAnalyze.includes('5 years') || textToAnalyze.includes('6 years')) {
-      experience = '5+ Years (Senior)';
-    } else if (textToAnalyze.includes('3 years') || textToAnalyze.includes('4 years')) {
-      experience = '3-4 Years (Mid-level)';
-    } else {
-      experience = '1-2 Years (Associate)';
+    if (!isParsedByAI) {
+      const techSkills = {
+        'React': ['react', 'react.js', 'redux', 'hooks', 'jsx', 'frontend'],
+        'JavaScript': ['javascript', 'js', 'es6', 'typescript', 'ts'],
+        'Laravel': ['laravel', 'php', 'composer', 'eloquent'],
+        'Python': ['python', 'fastapi', 'flask', 'django'],
+        'MySQL': ['mysql', 'sql', 'database', 'postgresql'],
+        'Firebase': ['firebase', 'firestore', 'auth'],
+        'Tailwind CSS': ['tailwind', 'css', 'flexbox', 'grid'],
+        'Node.js': ['node', 'node.js', 'express', 'backend']
+      };
+
+      for (const [skill, keywords] of Object.entries(techSkills)) {
+        if (keywords.some(kw => textToAnalyze.includes(kw))) skills.push(skill);
+      }
+      if (skills.length === 0) skills = ['React.js', 'JavaScript', 'CSS Grid'];
+
+      if (skills.includes('Laravel')) {
+        inferredRole = 'Fullstack Engineer (Laravel & React)';
+        questions = [
+          "Can you explain the request lifecycle in Laravel, specifically how Middleware works?",
+          "How do you design database relations in Laravel Eloquent and avoid the N+1 query problem?",
+          "Tell me about a time you had to build a RESTful API. How did you structure the endpoints and handle authorization?"
+        ];
+      } else if (skills.includes('React') || skills.includes('JavaScript')) {
+        inferredRole = 'Frontend Developer (React)';
+        questions = [
+          "What is the Virtual DOM in React, and how do React Hooks like useEffect manage state synchronization?",
+          "How do you optimize performance in a React application with heavy rendering loads?",
+          "Explain the difference between flexbox and grid, and how you make layouts fully responsive."
+        ];
+      } else if (skills.includes('Python')) {
+        inferredRole = 'Backend Python Developer';
+        questions = [
+          "Explain how asynchronous programming works in Python FastAPI using async/await keywords.",
+          "How do you handle database migrations, serialization, and connection pooling in a backend application?",
+          "How do you secure API endpoints against common threats like SQL injection and cross-site scripting?"
+        ];
+      } else {
+        inferredRole = 'Software Engineer';
+        questions = [
+          "Could you start by introducing yourself and walking me through your background and key strengths?",
+          "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
+          "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
+        ];
+      }
+
+      if (textToAnalyze.includes('senior') || textToAnalyze.includes('lead') || textToAnalyze.includes('5 years') || textToAnalyze.includes('6 years')) {
+        experience = '5+ Years (Senior)';
+      } else if (textToAnalyze.includes('3 years') || textToAnalyze.includes('4 years')) {
+        experience = '3-4 Years (Mid-level)';
+      } else {
+        experience = '1-2 Years (Associate)';
+      }
     }
 
     const skillsString = skills.join(',');
@@ -494,29 +586,32 @@ router.post('/resume/upload', async (req, res) => {
   }
 });
 
-router.get('/resume/list', async (req, res) => {
+router.get('/resume/list', authMiddleware, async (req, res) => {
   try {
+    const candidateName = req.user.name;
     if (getDBStatus()) {
-      const list = await queryDB('SELECT * FROM resumes ORDER BY id DESC');
+      const list = await queryDB('SELECT * FROM resumes WHERE name = ? ORDER BY id DESC', [candidateName]);
       res.json(list.map(r => ({ ...r, skills: r.skills ? r.skills.split(',') : [] })));
     } else {
-      res.json(memoryResumes.map(r => ({ ...r, skills: r.skills ? r.skills.split(',') : [] })));
+      const list = memoryResumes.filter(r => r.name === candidateName);
+      res.json(list.map(r => ({ ...r, skills: r.skills ? r.skills.split(',') : [] })));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/resume/:id', async (req, res) => {
+router.get('/resume/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
+    const candidateName = req.user.name;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM resumes WHERE id = ?', [id]);
-      if (rows.length === 0) return res.status(404).json({ error: 'Resume not found' });
+      const rows = await queryDB('SELECT * FROM resumes WHERE id = ? AND name = ?', [id, candidateName]);
+      if (rows.length === 0) return res.status(404).json({ error: 'Resume not found or access denied' });
       res.json({ ...rows[0], skills: rows[0].skills ? rows[0].skills.split(',') : [] });
     } else {
-      const resu = memoryResumes.find(r => String(r.id) === String(id));
-      if (!resu) return res.status(404).json({ error: 'Resume not found' });
+      const resu = memoryResumes.find(r => String(r.id) === String(id) && r.name === candidateName);
+      if (!resu) return res.status(404).json({ error: 'Resume not found or access denied in memory' });
       res.json({ ...resu, skills: resu.skills ? resu.skills.split(',') : [] });
     }
   } catch (error) {
@@ -763,10 +858,11 @@ router.post('/interview/end', (req, res) => {
   res.json({ success: true, message: 'Ended' });
 });
 
-router.get('/interview/history', async (req, res) => {
+router.get('/interview/history', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM sessions ORDER BY date DESC');
+      const rows = await queryDB('SELECT * FROM sessions WHERE user_id = ? ORDER BY date DESC', [userId]);
       const list = rows.map(r => ({
         id: r.id,
         roleTarget: r.role_target,
@@ -777,7 +873,31 @@ router.get('/interview/history', async (req, res) => {
       }));
       res.json(list);
     } else {
-      res.json(memorySessions);
+      const list = memorySessions.filter(s => s.userId === userId);
+      res.json(list);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/history', authMiddleware, async (req, res) => {
+  try {
+    const userId = req.user.id;
+    if (getDBStatus()) {
+      const rows = await queryDB('SELECT * FROM sessions WHERE user_id = ? ORDER BY date DESC', [userId]);
+      const list = rows.map(r => ({
+        id: r.id,
+        roleTarget: r.role_target,
+        overallScore: r.overall_score,
+        technicalScore: r.technical_score,
+        communicationScore: r.communication_score,
+        date: r.date
+      }));
+      res.json(list);
+    } else {
+      const list = memorySessions.filter(s => s.userId === userId);
+      res.json(list);
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -949,20 +1069,22 @@ router.get('/report/progress', async (req, res) => {
 // 13. DASHBOARD MODULE (5 APIs)
 // ==========================================
 
-router.get('/dashboard', (req, res) => {
-  res.json({ username: memoryUserProfile.name, sessionsFinished: memorySessions.length });
+router.get('/dashboard', authMiddleware, (req, res) => {
+  res.json({ username: req.user.name, email: req.user.email });
 });
 
-router.get('/dashboard/stats', async (req, res) => {
+router.get('/dashboard/stats', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT COUNT(*) as count, AVG(overall_score) as avgScore FROM sessions');
+      const rows = await queryDB('SELECT COUNT(*) as count, AVG(overall_score) as avgScore FROM sessions WHERE user_id = ?', [userId]);
       const count = rows[0].count || 0;
       const avg = Math.round(rows[0].avgScore) || 0;
       res.json({ totalSessions: count, avgScore: avg, practiceMins: count * 6 });
     } else {
-      const count = memorySessions.length;
-      const sum = memorySessions.reduce((a, b) => a + b.overallScore, 0);
+      const list = memorySessions.filter(s => s.userId === userId);
+      const count = list.length;
+      const sum = list.reduce((a, b) => a + b.overallScore, 0);
       const avg = count ? Math.round(sum / count) : 0;
       res.json({ totalSessions: count, avgScore: avg, practiceMins: count * 6 });
     }
@@ -971,14 +1093,15 @@ router.get('/dashboard/stats', async (req, res) => {
   }
 });
 
-router.get('/dashboard/performance', async (req, res) => {
+router.get('/dashboard/performance', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     let dataPoints = [];
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT overall_score, date FROM sessions ORDER BY date ASC LIMIT 5');
+      const rows = await queryDB('SELECT overall_score FROM sessions WHERE user_id = ? ORDER BY date ASC LIMIT 5', [userId]);
       dataPoints = rows.map(r => r.overall_score);
     } else {
-      dataPoints = memorySessions.slice(-5).map(s => s.overallScore);
+      dataPoints = memorySessions.filter(s => s.userId === userId).slice(-5).map(s => s.overallScore);
     }
     res.json({ performanceScores: dataPoints });
   } catch (err) {
@@ -986,13 +1109,14 @@ router.get('/dashboard/performance', async (req, res) => {
   }
 });
 
-router.get('/dashboard/recent-interviews', async (req, res) => {
+router.get('/dashboard/recent-interviews', authMiddleware, async (req, res) => {
   try {
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM sessions ORDER BY date DESC LIMIT 3');
+      const rows = await queryDB('SELECT * FROM sessions WHERE user_id = ? ORDER BY date DESC LIMIT 3', [userId]);
       res.json(rows);
     } else {
-      res.json(memorySessions.slice(0, 3));
+      res.json(memorySessions.filter(s => s.userId === userId).slice(0, 3));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1183,7 +1307,7 @@ router.get('/feedback/practice-questions', (req, res) => {
 // ==========================================
 
 // Process full completed interview session responses (Linked from React room submit triggers)
-router.post('/interview/submit', async (req, res) => {
+router.post('/interview/submit', authMiddleware, async (req, res) => {
   try {
     const {
       roleTarget,
@@ -1194,6 +1318,8 @@ router.post('/interview/submit', async (req, res) => {
       fillerHistory = [],
       expression = 'Confident'
     } = req.body;
+
+    const userId = req.user.id;
 
     if (!roleTarget || !questions || !answers) {
       return res.status(400).json({ error: 'Missing required session metrics' });
@@ -1242,13 +1368,14 @@ router.post('/interview/submit', async (req, res) => {
     if (getDBStatus()) {
       const result = await queryDB(
         `INSERT INTO sessions 
-        (role_target, overall_score, technical_score, communication_score, avg_wpm, total_filler, avg_eye_contact, expression, questions, answers, wpm_history, eye_contact_history, filler_history) 
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [roleTarget, overallScore, technicalScore, communicationScore, avgWpm, totalFiller, avgEyeContact, expression, questionsText, answersText, wpmText, eyeContactText, fillerText]
+        (user_id, role_target, overall_score, technical_score, communication_score, avg_wpm, total_filler, avg_eye_contact, expression, questions, answers, wpm_history, eye_contact_history, filler_history) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, roleTarget, overallScore, technicalScore, communicationScore, avgWpm, totalFiller, avgEyeContact, expression, questionsText, answersText, wpmText, eyeContactText, fillerText]
       );
       
       sessionRecord = {
         id: result.insertId,
+        userId,
         roleTarget,
         overallScore,
         technicalScore,
@@ -1267,6 +1394,7 @@ router.post('/interview/submit', async (req, res) => {
     } else {
       sessionRecord = {
         id: 'mem_sess_' + Date.now(),
+        userId,
         roleTarget,
         overallScore,
         technicalScore,
@@ -1297,14 +1425,15 @@ router.post('/interview/submit', async (req, res) => {
 });
 
 // GET Details of a single session (duplicated for naming compatibility check)
-router.get('/history/:id', async (req, res) => {
+router.get('/history/:id', authMiddleware, async (req, res) => {
   try {
     const id = req.params.id;
+    const userId = req.user.id;
     
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM sessions WHERE id = ?', [id]);
+      const rows = await queryDB('SELECT * FROM sessions WHERE id = ? AND user_id = ?', [id, userId]);
       if (rows.length === 0) {
-        return res.status(404).json({ error: 'Session not found' });
+        return res.status(404).json({ error: 'Session not found or access denied' });
       }
       
       const row = rows[0];
@@ -1328,9 +1457,9 @@ router.get('/history/:id', async (req, res) => {
       
       res.json(session);
     } else {
-      const record = memorySessions.find(s => String(s.id) === String(id));
+      const record = memorySessions.find(s => String(s.id) === String(id) && s.userId === userId);
       if (!record) {
-        return res.status(404).json({ error: 'Session not found in memory' });
+        return res.status(404).json({ error: 'Session not found or access denied in memory' });
       }
       res.json(record);
     }
@@ -1338,6 +1467,96 @@ router.get('/history/:id', async (req, res) => {
     console.error('Error fetching session details:', error);
     res.status(500).json({ error: 'Server error' });
   }
+});
+
+// ==========================================
+// FASTAPI AI INTEGRATED ENDPOINTS
+// ==========================================
+
+router.post('/ai/parse-resume', async (req, res) => {
+  const { fileContent = '' } = req.body;
+  const prompt = `Parse this resume text and extract the candidate name, target role, experience range, and a list of key technical skills.
+  Resume Content:
+  ${fileContent}
+  
+  Output a JSON response with format:
+  {
+    "name": "Extract Name",
+    "roleTarget": "Inferred Target Role",
+    "experience": "e.g. 2 Years",
+    "skills": ["Skill1", "Skill2"]
+  }
+  Only output valid JSON.`;
+  
+  const defaultData = { name: 'Candidate', roleTarget: 'Software Engineer', experience: '1-2 Years', skills: ['JavaScript', 'HTML5', 'CSS3'] };
+  const result = await callGemini(prompt, JSON.stringify(defaultData));
+  try {
+    const jsonString = result.replace(/```json/g, '').replace(/```/g, '').trim();
+    res.json(JSON.parse(jsonString));
+  } catch (e) {
+    res.json(defaultData);
+  }
+});
+
+router.post('/ai/analyze-resume', async (req, res) => {
+  const { roleTarget = '', skills = [] } = req.body;
+  res.json({
+    resumeScore: 85,
+    missingSkillsKeywords: ['System Design', 'Redis'],
+    readabilityScore: 90
+  });
+});
+
+router.post('/ai/speech-to-text', (req, res) => {
+  res.json({ transcript: 'Hello, this is a transcribed response from speech recognition.' });
+});
+
+router.post('/ai/text-to-speech', (req, res) => {
+  res.json({ audioUrl: 'https://prepcoach.ai/audio/speech.mp3' });
+});
+
+router.post('/ai/analyze-face', (req, res) => {
+  res.json({
+    eyeContactScore: 92,
+    headPose: { pitch: 0.0, yaw: 0.1, roll: 0.0 },
+    emotion: 'Confident',
+    expressionScore: 0.94
+  });
+});
+
+router.post('/ai/analyze-voice', (req, res) => {
+  res.json({
+    speakingSpeedWpm: 135,
+    clarityRating: 90,
+    fillerWordsCount: 2,
+    fillerWordsDetails: ['um', 'like']
+  });
+});
+
+router.post('/ai/generate-feedback', async (req, res) => {
+  const { questions = [], answers = [] } = req.body;
+  const prompt = `Based on these interview questions and candidate answers, generate constructive feedback for the candidate.
+  Questions: ${JSON.stringify(questions)}
+  Answers: ${JSON.stringify(answers)}
+  Provide a JSON response format:
+  {
+    "summary": "Overall assessment feedback",
+    "strengths": ["Strength 1", "Strength 2"],
+    "improvements": ["Area 1", "Area 2"]
+  }
+  Only output valid JSON.`;
+  const defaultFeedback = { summary: 'Overall Good performance.', strengths: ['Technical knowledge'], improvements: ['Detail structural execution'] };
+  const result = await callGemini(prompt, JSON.stringify(defaultFeedback));
+  try {
+    const jsonString = result.replace(/```json/g, '').replace(/```/g, '').trim();
+    res.json(JSON.parse(jsonString));
+  } catch (e) {
+    res.json(defaultFeedback);
+  }
+});
+
+router.post('/ai/recommend-practice', (req, res) => {
+  res.json({ recommendedAreas: ['System Design Scale Check', 'Redux State Management'] });
 });
 
 module.exports = router;

@@ -17,7 +17,10 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
     
     // If "latest" is selected, fetch history list and get the first one
     if (targetId === 'latest') {
-      fetch('/api/history')
+      const token = localStorage.getItem('coach_jwt_token');
+      fetch('/api/history', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      })
         .then(r => r.json())
         .then(data => {
           if (data && data.length > 0) {
@@ -44,7 +47,10 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
   }, [selectedId]);
 
   const fetchReportDetails = (id) => {
-    fetch(`/api/history/${id}`)
+    const token = localStorage.getItem('coach_jwt_token');
+    fetch(`/api/history/${id}`, {
+      headers: { 'Authorization': `Bearer ${token}` }
+    })
       .then(r => r.json())
       .then(data => {
         setReport(data);
