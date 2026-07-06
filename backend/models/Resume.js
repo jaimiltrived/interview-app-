@@ -5,17 +5,18 @@ let memoryResumes = [];
 class Resume {
   static getMemoryResumes() { return memoryResumes; }
 
-  static async create({ userId, name, roleTarget, experience, skills }) {
+  static async create({ userId, name, roleTarget, experience, skills, questions }) {
     const skillsJson = JSON.stringify(skills);
+    const questionsJson = JSON.stringify(questions);
     if (getDBStatus()) {
       const [result] = await getPool().query(
-        'INSERT INTO resumes (user_id, name, role_target, experience, skills) VALUES (?, ?, ?, ?, ?)',
-        [userId, name, roleTarget, experience, skillsJson]
+        'INSERT INTO resumes (user_id, name, role_target, experience, skills, questions) VALUES (?, ?, ?, ?, ?, ?)',
+        [userId, name, roleTarget, experience, skillsJson, questionsJson]
       );
       return result.insertId;
     } else {
       const id = memoryResumes.length + 1;
-      memoryResumes.push({ id, userId, name, roleTarget, experience, skills });
+      memoryResumes.push({ id, userId, name, roleTarget, experience, skills, questions });
       return id;
     }
   }

@@ -123,6 +123,21 @@ async function runTests() {
     const sessionDetailRes = await fetch(`${BASE_URL}/history/${sessionData.session.id}`, { headers: authHeaders });
     await assertResponse(`GET /history/${sessionData.session.id} (Detail)`, sessionDetailRes, 200);
 
+    // 6.5. AI Question Module (Auth required)
+    console.log('\n--- Testing AI Question Generation ---');
+    const genQRes = await fetch(`${BASE_URL}/ai/generate-question`, {
+      method: 'POST',
+      headers: authHeaders
+    });
+    await assertResponse('POST /ai/generate-question', genQRes, 200);
+
+    const followUpRes = await fetch(`${BASE_URL}/ai/follow-up-question`, {
+      method: 'POST',
+      headers: authHeaders,
+      body: JSON.stringify({ lastQuestion: 'Explain React state', lastAnswer: 'I use hooks.' })
+    });
+    await assertResponse('POST /ai/follow-up-question', followUpRes, 200);
+
     // 7. General Helper APIs
     console.log('\n--- Testing Utility Modules (No Auth) ---');
     const statusRes = await fetch(`${BASE_URL}/status`);

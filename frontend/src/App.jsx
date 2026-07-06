@@ -54,8 +54,10 @@ export default function App() {
           setUserProfile(prev => ({
             ...prev,
             name: data.name,
-            role: localStorage.getItem('coach_user_role') || prev.role,
-            skills: data.skills && data.skills.length > 0 ? data.skills : prev.skills
+            role: data.role || prev.role,
+            skills: data.skills && data.skills.length > 0 ? data.skills : prev.skills,
+            experience: data.experience || prev.experience,
+            questions: data.questions && data.questions.length > 0 ? data.questions : prev.questions
           }));
         }
       })

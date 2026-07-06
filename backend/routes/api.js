@@ -270,29 +270,62 @@ router.get('/status', (req, res) => {
 router.get('/profile', authMiddleware, async (req, res) => {
   try {
     const userId = req.user.id;
-    if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM users WHERE id = ?', [userId]);
-      if (rows.length > 0) {
-        return res.json({
-          id: rows[0].id,
-          name: rows[0].name,
-          email: rows[0].email,
-          photoUrl: rows[0].photo_url,
-          skills: rows[0].skills ? rows[0].skills.split(',') : []
-        });
+    const user = await User.findById(userId);
+    if (!user) {
+      return res.status(404).json({ error: 'User not found' });
+    }
+
+    let roleTarget = 'Software Engineer';
+    let experience = '1-2 Years';
+    let skills = [];
+    let questions = [];
+
+    // Parse user profile level skills if present
+    if (user.skills) {
+      try {
+        const skillsObj = typeof user.skills === 'string' ? JSON.parse(user.skills) : user.skills;
+        if (Array.isArray(skillsObj)) skills = skillsObj;
+      } catch (e) {
+        skills = String(user.skills).split(',').map(s => s.trim());
       }
     }
-    const user = memoryUsers.find(u => u.id === userId);
-    if (user) {
-      return res.json({
-        id: user.id,
-        name: user.name,
-        email: user.email,
-        photoUrl: user.photo_url,
-        skills: user.skills ? user.skills.split(',') : []
-      });
+
+    // Lookup latest resume for the user to enrich profile questions and target role
+    try {
+      const resumes = await Resume.listByCandidate(user.name);
+      if (resumes && resumes.length > 0) {
+        const latestResume = resumes[0];
+        roleTarget = latestResume.role_target || roleTarget;
+        experience = latestResume.experience || experience;
+        
+        if (latestResume.skills) {
+          try {
+            const parsedSkills = typeof latestResume.skills === 'string' ? JSON.parse(latestResume.skills) : latestResume.skills;
+            if (Array.isArray(parsedSkills)) skills = parsedSkills;
+          } catch (e) {}
+        }
+
+        if (latestResume.questions) {
+          try {
+            const parsedQuestions = typeof latestResume.questions === 'string' ? JSON.parse(latestResume.questions) : latestResume.questions;
+            if (Array.isArray(parsedQuestions)) questions = parsedQuestions;
+          } catch (e) {}
+        }
+      }
+    } catch (err) {
+      console.warn('Could not fetch resume context for profile:', err.message);
     }
-    res.status(404).json({ error: 'User not found' });
+
+    res.json({
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      photoUrl: user.photo_url,
+      role: roleTarget,
+      experience,
+      skills,
+      questions
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -551,24 +584,15 @@ router.post('/resume/upload', authMiddleware, async (req, res) => {
     const skillsString = skills.join(',');
     let insertedId;
 
-    if (getDBStatus()) {
-      const result = await queryDB(
-        'INSERT INTO resumes (name, role_target, experience, skills) VALUES (?, ?, ?, ?)',
-        [candidateName, inferredRole, experience, skillsString]
-      );
-      insertedId = result.insertId;
-    } else {
-      const mockRecord = {
-        id: 'mem_res_' + Date.now(),
-        name: candidateName,
-        role_target: inferredRole,
-        experience,
-        skills: skillsString,
-        created_at: new Date()
-      };
-      memoryResumes.push(mockRecord);
-      insertedId = mockRecord.id;
-    }
+    const userId = req.user.id;
+    insertedId = await Resume.create({
+      userId,
+      name: candidateName,
+      roleTarget: inferredRole,
+      experience,
+      skills,
+      questions
+    });
 
     res.json({
       success: true,
@@ -923,20 +947,89 @@ router.delete('/interview/delete/:id', async (req, res) => {
 // 7. AI QUESTION MODULE (4 APIs)
 // ==========================================
 
-router.post('/ai/generate-question', (req, res) => {
-  res.json({ question: 'Explain the request lifecycle in Laravel middleware.' });
+router.post('/ai/generate-question', authMiddleware, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id);
+    let inferredRole = 'Software Engineer';
+    let skills = 'JavaScript, React, Node';
+    let experience = '1-2 Years';
+
+    if (user) {
+      if (user.skills) {
+        try {
+          const skillsObj = typeof user.skills === 'string' ? JSON.parse(user.skills) : user.skills;
+          if (Array.isArray(skillsObj)) skills = skillsObj.join(', ');
+        } catch (e) {
+          skills = String(user.skills);
+        }
+      }
+
+      try {
+        const latestResume = await Resume.listByCandidate(user.name);
+        if (latestResume && latestResume.length > 0) {
+          const r = latestResume[0];
+          inferredRole = r.role_target || inferredRole;
+          experience = r.experience || experience;
+          if (r.skills) {
+            try {
+              const rSkills = typeof r.skills === 'string' ? JSON.parse(r.skills) : r.skills;
+              if (Array.isArray(rSkills)) skills = rSkills.join(', ');
+            } catch (e) {}
+          }
+        }
+      } catch (err) {
+        console.warn('Could not fetch resume context from database:', err.message);
+      }
+    }
+
+    const prompt = `You are a professional technical interviewer. Generate a single highly relevant interview question for a candidate named ${user ? user.name : 'Candidate'} applying for the role of "${inferredRole}" with key skills in: "${skills}" and experience level "${experience}". Do not write introductory text, just output the question itself.`;
+    const defaultQuestion = 'Explain the request lifecycle in Laravel middleware.';
+    const question = await callGemini(prompt, defaultQuestion);
+    res.json({ question });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/ai/follow-up-question', (req, res) => {
-  res.json({ question: 'You mentioned routing; how do route model bindings optimize database queries?' });
+router.post('/ai/follow-up-question', authMiddleware, async (req, res) => {
+  try {
+    const { lastQuestion = '', lastAnswer = '' } = req.body;
+    const prompt = `You are a technical interviewer. The candidate was asked: "${lastQuestion}"
+    They answered: "${lastAnswer}"
+    Based on their response, ask a single relevant follow-up question to probe deeper into their technical understanding.
+    Do not write introductory text, just output the question itself.`;
+    const defaultQuestion = 'You mentioned routing; how do route model bindings optimize database queries?';
+    const question = await callGemini(prompt, defaultQuestion);
+    res.json({ question });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/ai/company-question', (req, res) => {
-  res.json({ question: 'Google Mock Prompt: How would you design a distributed key-value cache?' });
+router.post('/ai/company-question', authMiddleware, async (req, res) => {
+  try {
+    const { company = 'Google', role = 'Software Engineer' } = req.body;
+    const prompt = `Generate a single interview question asked during hiring at "${company}" for the role of "${role}".
+    Do not write introductory text, just output the question itself.`;
+    const defaultQuestion = 'Google Mock Prompt: How would you design a distributed key-value cache?';
+    const question = await callGemini(prompt, defaultQuestion);
+    res.json({ question });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/ai/technical-question', (req, res) => {
-  res.json({ question: 'Can you describe a race condition, and how you resolve it in Node.js?' });
+router.post('/ai/technical-question', authMiddleware, async (req, res) => {
+  try {
+    const { domain = 'JavaScript' } = req.body;
+    const prompt = `Generate a single highly technical interview question about the domain: "${domain}".
+    Do not write introductory text, just output the question itself.`;
+    const defaultQuestion = 'Can you describe a race condition, and how you resolve it in Node.js?';
+    const question = await callGemini(prompt, defaultQuestion);
+    res.json({ question });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 

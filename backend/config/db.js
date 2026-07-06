@@ -65,6 +65,7 @@ const connectDB = async () => {
         role_target VARCHAR(255) NOT NULL,
         experience VARCHAR(100),
         skills JSON NULL,
+        questions JSON NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
@@ -140,6 +141,11 @@ const connectDB = async () => {
     try {
       await connection.query('ALTER TABLE resumes MODIFY COLUMN skills JSON NULL');
       console.log('[MIGRATION] Converted resumes.skills to JSON.');
+    } catch (e) {}
+
+    try {
+      await connection.query('ALTER TABLE resumes ADD COLUMN questions JSON NULL AFTER skills');
+      console.log('[MIGRATION] Added questions column to resumes.');
     } catch (e) {}
 
     try {
