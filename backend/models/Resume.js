@@ -5,18 +5,23 @@ let memoryResumes = [];
 class Resume {
   static getMemoryResumes() { return memoryResumes; }
 
-  static async create({ userId, name, roleTarget, experience, skills, questions }) {
-    const skillsJson = JSON.stringify(skills);
-    const questionsJson = JSON.stringify(questions);
+  static async create({ userId, name, roleTarget, experience, skills, questions, resumeText = null, parsedJson = null }) {
+    const skillsJson = skills ? JSON.stringify(skills) : null;
+    const questionsJson = questions ? JSON.stringify(questions) : null;
+    const parsedStr = parsedJson ? JSON.stringify(parsedJson) : null;
+
     if (getDBStatus()) {
       const [result] = await getPool().query(
-        'INSERT INTO resumes (user_id, name, role_target, experience, skills, questions) VALUES (?, ?, ?, ?, ?, ?)',
-        [userId, name, roleTarget, experience, skillsJson, questionsJson]
+        `INSERT INTO resumes 
+        (user_id, name, role_target, experience, skills, questions, resume_text, parsed_json) 
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        [userId, name || 'Candidate', roleTarget || 'Software Engineer', experience || '1-2 Years', skillsJson, questionsJson, resumeText, parsedStr]
       );
       return result.insertId;
     } else {
       const id = memoryResumes.length + 1;
-      memoryResumes.push({ id, userId, name, roleTarget, experience, skills, questions });
+      const record = { id, userId, name, roleTarget, experience, skills, questions, resumeText, parsedJson, created_at: new Date() };
+      memoryResumes.push(record);
       return id;
     }
   }

@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 
-export default function AudioVisualizer({ audioStream, isListening }) {
+export default function AudioVisualizer({ audioStream, isListening, minimal = false }) {
   const canvasRef = useRef(null);
   const animationRef = useRef(null);
   const audioCtxRef = useRef(null);
@@ -23,7 +23,7 @@ export default function AudioVisualizer({ audioStream, isListening }) {
 
         const source = audioCtx.createMediaStreamSource(audioStream);
         const analyser = audioCtx.createAnalyser();
-        analyser.fftSize = 256;
+        analyser.fftSize = 64; // smaller FFT size for clean discrete bars
         analyserRef.current = analyser;
 
         source.connect(analyser);
@@ -46,29 +46,28 @@ export default function AudioVisualizer({ audioStream, isListening }) {
 
           ctx.clearRect(0, 0, width, height);
 
-          // Draw bars
-          const barWidth = (width / dataArray.length) * 1.5;
+          // Draw green bars (similar to screenshot 2)
+          const barWidth = (width / dataArray.length) * 1.8;
           let barHeight;
           let x = 0;
 
           for (let i = 0; i < dataArray.length; i++) {
             barHeight = (dataArray[i] / 255) * height * 0.95;
 
+            // Green/teal gradient matching prepflow screenshot
             const grad = ctx.createLinearGradient(0, height - barHeight, 0, height);
-            grad.addColorStop(0, '#06b6d4'); // Cyan
-            grad.addColorStop(1, '#8b5cf6'); // Purple
+            grad.addColorStop(0, '#10b981'); // Emerald
+            grad.addColorStop(1, '#059669'); // Dark green
 
             ctx.fillStyle = grad;
-            ctx.shadowBlur = 4;
-            ctx.shadowColor = 'rgba(6, 182, 212, 0.3)';
 
             // Draw rounded bar
             ctx.beginPath();
-            const radius = 3;
+            const radius = 2;
             ctx.moveTo(x + radius, height - barHeight);
-            ctx.lineTo(x + barWidth - radius - 2, height - barHeight);
-            ctx.quadraticCurveTo(x + barWidth - 2, height - barHeight, x + barWidth - 2, height - barHeight + radius);
-            ctx.lineTo(x + barWidth - 2, height);
+            ctx.lineTo(x + barWidth - radius - 1, height - barHeight);
+            ctx.quadraticCurveTo(x + barWidth - 1, height - barHeight, x + barWidth - 1, height - barHeight + radius);
+            ctx.lineTo(x + barWidth - 1, height);
             ctx.lineTo(x, height);
             ctx.lineTo(x, height - barHeight + radius);
             ctx.quadraticCurveTo(x, height - barHeight, x + radius, height - barHeight);
@@ -93,19 +92,25 @@ export default function AudioVisualizer({ audioStream, isListening }) {
         const height = canvas.height = canvas.offsetHeight;
 
         ctx.clearRect(0, 0, width, height);
-        ctx.beginPath();
-        ctx.strokeStyle = 'rgba(139, 92, 246, 0.4)'; // Purple transparent
-        ctx.lineWidth = 2;
 
-        const amp = isListening ? 16 : 2.5;
-        for (let x = 0; x < width; x++) {
-          const y = height / 2 + Math.sin(x * 0.05 + phase) * amp;
-          if (x === 0) ctx.moveTo(x, y);
-          else ctx.lineTo(x, y);
+        // Draw standard passive visualizer bars
+        const barsCount = 10;
+        const barWidth = width / barsCount;
+        ctx.fillStyle = isListening ? '#10b981' : '#cbd5e1';
+
+        for (let i = 0; i < barsCount; i++) {
+          const time = phase + i * 0.5;
+          const amp = isListening ? (15 + Math.sin(time) * 10) : 4;
+          const barHeight = (amp / 30) * height;
+          
+          ctx.beginPath();
+          ctx.arc(i * barWidth + barWidth / 2, height - barHeight, barWidth / 3, 0, Math.PI, true);
+          ctx.rect(i * barWidth + barWidth / 2 - barWidth / 3, height - barHeight, barWidth / 1.5, barHeight);
+          ctx.closePath();
+          ctx.fill();
         }
-        ctx.stroke();
 
-        phase += 0.12;
+        phase += 0.15;
         setDbLevel(isListening ? Math.round(15 + Math.random() * 15) : 0);
         animationRef.current = requestAnimationFrame(drawSimulated);
       };
@@ -124,15 +129,21 @@ export default function AudioVisualizer({ audioStream, isListening }) {
     };
   }, [audioStream, isListening]);
 
+  if (minimal) {
+    return (
+      <canvas ref={canvasRef} style={{ width: '100%', height: '100%', display: 'block' }}></canvas>
+    );
+  }
+
   return (
-    <div className="glass-card visualizer-card">
-      <div className="flex-between">
-        <div className="stat-label">Audio Input Waveform</div>
-        <span className="text-success" style={{ fontSize: '12px', fontWeight: '600' }}>
+    <div className="glass-card visualizer-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '16px' }}>
+      <div className="flex-between" style={{ marginBottom: '8px' }}>
+        <div className="stat-label" style={{ fontWeight: '700', fontSize: '12px' }}>Audio Input Waveform</div>
+        <span className="text-success" style={{ fontSize: '12px', fontWeight: '800' }}>
           {dbLevel}dB
         </span>
       </div>
-      <canvas ref={canvasRef} className="visualizer-canvas" style={{ width: '100%', height: '50px' }}></canvas>
+      <canvas ref={canvasRef} className="visualizer-canvas" style={{ width: '100%', height: '40px' }}></canvas>
     </div>
   );
 }

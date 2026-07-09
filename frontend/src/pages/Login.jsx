@@ -40,49 +40,49 @@ export default function Login({ onLoginSuccess, switchToRegister }) {
   };
 
   return (
-    <div className="flex-row-center" style={{ minHeight: '80vh', width: '100%' }}>
-      <div className="glass-card" style={{ maxWidth: '400px', width: '100%', padding: '35px', textAlign: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', width: '100%' }}>
+      <div className="glass-card" style={{ maxWidth: '400px', width: '100%', padding: '35px', textAlign: 'center', background: '#ffffff', border: '1px solid var(--border-color)' }}>
         <div className="logo-icon" style={{ margin: '0 auto 20px', width: '50px', height: '50px', fontSize: '24px' }}>
           <i className="fa-solid fa-brain-circuit"></i>
         </div>
-        <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '26px', fontWeight: '800', marginBottom: '10px' }}>
+        <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '26px', fontWeight: '800', marginBottom: '10px', color: 'var(--text-main)' }}>
           Welcome Back
         </h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '25px' }}>
           Sign in to access your interview coach profile and scorecards.
         </p>
-
+ 
         {error && (
           <div style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid var(--error)', color: 'var(--error)', padding: '12px', borderRadius: '8px', fontSize: '13px', marginBottom: '20px', textAlign: 'left' }}>
             <i className="fa-solid fa-triangle-exclamation" style={{ marginRight: '8px' }}></i> {error}
           </div>
         )}
-
+ 
         <form onSubmit={handleSubmit} style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '18px' }}>
           <div>
-            <label className="detail-label" style={{ marginBottom: '6px', display: 'block' }}>Email Address</label>
+            <label className="detail-label" style={{ marginBottom: '6px', display: 'block', color: 'var(--text-muted)' }}>Email Address</label>
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="name@example.com"
-              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
-
+ 
           <div>
-            <label className="detail-label" style={{ marginBottom: '6px', display: 'block' }}>Password</label>
+            <label className="detail-label" style={{ marginBottom: '6px', display: 'block', color: 'var(--text-muted)' }}>Password</label>
             <input 
               type="password" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '12px 14px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
-
+ 
           <button 
             type="submit" 
             className="btn btn-primary" 
@@ -96,12 +96,12 @@ export default function Login({ onLoginSuccess, switchToRegister }) {
             )}
           </button>
         </form>
-
+ 
         <p style={{ marginTop: '25px', fontSize: '13.5px', color: 'var(--text-muted)' }}>
           Don't have an account?{' '}
           <span 
             onClick={switchToRegister} 
-            style={{ color: 'var(--secondary)', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
+            style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
           >
             Create account
           </span>

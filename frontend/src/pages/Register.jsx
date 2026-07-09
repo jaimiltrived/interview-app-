@@ -48,12 +48,12 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
   };
 
   return (
-    <div className="flex-row-center" style={{ minHeight: '80vh', width: '100%' }}>
-      <div className="glass-card" style={{ maxWidth: '440px', width: '100%', padding: '35px', textAlign: 'center' }}>
+    <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', minHeight: '80vh', width: '100%' }}>
+      <div className="glass-card" style={{ maxWidth: '440px', width: '100%', padding: '35px', textAlign: 'center', background: '#ffffff', border: '1px solid var(--border-color)' }}>
         <div className="logo-icon" style={{ margin: '0 auto 20px', width: '50px', height: '50px', fontSize: '24px' }}>
           <i className="fa-solid fa-user-plus"></i>
         </div>
-        <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '26px', fontWeight: '800', marginBottom: '10px' }}>
+        <h2 style={{ fontFamily: 'Outfit, sans-serif', fontSize: '26px', fontWeight: '800', marginBottom: '10px', color: 'var(--text-main)' }}>
           Create Account
         </h2>
         <p style={{ color: 'var(--text-muted)', fontSize: '14px', marginBottom: '25px' }}>
@@ -74,49 +74,49 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
 
         <form onSubmit={handleSubmit} style={{ textAlign: 'left', display: 'flex', flexDirection: 'column', gap: '15px' }}>
           <div>
-            <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Full Name</label>
+            <label className="detail-label" style={{ marginBottom: '5px', display: 'block', color: 'var(--text-muted)' }}>Full Name</label>
             <input 
               type="text" 
               value={name}
               onChange={(e) => setName(e.target.value)}
               placeholder="Jane Doe"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
 
           <div>
-            <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Email Address</label>
+            <label className="detail-label" style={{ marginBottom: '5px', display: 'block', color: 'var(--text-muted)' }}>Email Address</label>
             <input 
               type="email" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="jane@example.com"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
 
           <div>
-            <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Target Job / Role</label>
+            <label className="detail-label" style={{ marginBottom: '5px', display: 'block', color: 'var(--text-muted)' }}>Target Job / Role</label>
             <input 
               type="text" 
               value={role}
               onChange={(e) => setRole(e.target.value)}
               placeholder="Software Engineer"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
 
           <div>
-            <label className="detail-label" style={{ marginBottom: '5px', display: 'block' }}>Password</label>
+            <label className="detail-label" style={{ marginBottom: '5px', display: 'block', color: 'var(--text-muted)' }}>Password</label>
             <input 
               type="password" 
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
-              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: 'rgba(0,0,0,0.3)', border: '1px solid var(--border-color)', color: 'white', fontSize: '14px', outline: 'none' }}
+              style={{ width: '100%', padding: '10px 12px', borderRadius: '10px', background: '#ffffff', border: '1px solid var(--border-color)', color: 'var(--text-main)', fontSize: '14px', outline: 'none' }}
               required
             />
           </div>
@@ -139,7 +139,7 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
           Already have an account?{' '}
           <span 
             onClick={switchToLogin} 
-            style={{ color: 'var(--secondary)', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
+            style={{ color: 'var(--primary)', cursor: 'pointer', fontWeight: 'bold', textDecoration: 'underline' }}
           >
             Sign in
           </span>

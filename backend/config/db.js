@@ -123,13 +123,83 @@ const connectDB = async () => {
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
     `);
 
+    // 7. Create interview_results table referencing users
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS interview_results (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        question TEXT NOT NULL,
+        answer TEXT NOT NULL,
+        ai_feedback TEXT NULL,
+        technical_score INT NOT NULL,
+        communication_score INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 8. Create interview_questions table referencing users
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS interview_questions (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        question TEXT NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 9. Create interview_answers table referencing interview_questions
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS interview_answers (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        question_id INT NOT NULL,
+        answer TEXT NOT NULL,
+        score JSON NULL,
+        feedback TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (question_id) REFERENCES interview_questions(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // 10. Create interview_reports table referencing users
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS interview_reports (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        overall_score INT NOT NULL,
+        technical_score INT NOT NULL,
+        communication_score INT NOT NULL,
+        report_json JSON NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
     // --- Schema Migration & Relations Polish ---
+    try {
+      await connection.query("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'candidate' AFTER email");
+      console.log('[MIGRATION] Added role column to users.');
+    } catch (e) {}
+
     try {
       await connection.query('ALTER TABLE sessions ADD COLUMN user_id INT NULL AFTER id');
     } catch (e) {}
 
     try {
       await connection.query('ALTER TABLE resumes ADD COLUMN user_id INT NULL AFTER id');
+    } catch (e) {}
+
+    // Add resume_text and parsed_json to resumes table
+    try {
+      await connection.query('ALTER TABLE resumes ADD COLUMN resume_text LONGTEXT NULL AFTER name');
+      console.log('[MIGRATION] Added resume_text column to resumes.');
+    } catch (e) {}
+
+    try {
+      await connection.query('ALTER TABLE resumes ADD COLUMN parsed_json JSON NULL AFTER resume_text');
+      console.log('[MIGRATION] Added parsed_json column to resumes.');
     } catch (e) {}
 
     // Convert columns to JSON if they are currently TEXT
@@ -177,6 +247,129 @@ const connectDB = async () => {
       console.log('[MIGRATION] Created composite index idx_resumes_user_role.');
     } catch (e) {}
 
+    // --- Admin Tables Creation ---
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS companies (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS question_bank (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        question TEXT NOT NULL,
+        type VARCHAR(100) NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS skills (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS feedback (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        message TEXT NOT NULL,
+        reply TEXT NULL,
+        is_resolved BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key_name VARCHAR(255) PRIMARY KEY,
+        value_data TEXT NULL,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS activity_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        user_id INT NULL,
+        action VARCHAR(255) NOT NULL,
+        details TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE SET NULL
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS ai_prompts (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        content TEXT NOT NULL,
+        is_active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS email_templates (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(255) NOT NULL UNIQUE,
+        subject VARCHAR(255) NOT NULL,
+        body TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS system_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        level VARCHAR(50) NOT NULL,
+        message TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS api_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        method VARCHAR(10) NOT NULL,
+        url VARCHAR(255) NOT NULL,
+        status INT NOT NULL,
+        response_time_ms INT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    await connection.query(`
+      CREATE TABLE IF NOT EXISTS security_logs (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        event VARCHAR(100) NOT NULL,
+        ip_address VARCHAR(50) NULL,
+        username VARCHAR(255) NULL,
+        details TEXT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+    `);
+
+    // Seed default admin accounts
+    const seedAdmin = async (name, email, password, role) => {
+      const [rows] = await connection.query('SELECT * FROM users WHERE email = ?', [email]);
+      if (rows.length === 0) {
+        const bcrypt = require('bcryptjs');
+        const hashedPassword = await bcrypt.hash(password, 10);
+        await connection.query('INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)', [name, email, hashedPassword, role]);
+        console.log(`Seeded default account: ${email} (${role})`);
+      }
+    };
+    await seedAdmin('Super Admin', 'superadmin@prepcoach.ai', 'Password123', 'super_admin');
+    await seedAdmin('Admin User', 'admin@prepcoach.ai', 'Password123', 'admin');
+    await seedAdmin('Content Manager', 'content@prepcoach.ai', 'Password123', 'content_manager');
+    await seedAdmin('Jane Doe', 'jane@example.com', 'SecurePassword123', 'candidate');
+
     // Seed job_roles if empty
     const [rolesCount] = await connection.query('SELECT COUNT(*) as count FROM job_roles');
     if (rolesCount[0].count === 0) {
@@ -200,6 +393,101 @@ const connectDB = async () => {
         ('System Design Mock', '45 mins')
       `);
       console.log('Seeded default interview types.');
+    }
+
+    // Seed companies if empty
+    const [companiesCount] = await connection.query('SELECT COUNT(*) as count FROM companies');
+    if (companiesCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO companies (name) VALUES 
+        ('Google'), ('Amazon'), ('Microsoft'), ('Meta'), ('Apple'), 
+        ('TCS'), ('Infosys'), ('Deloitte'), ('Accenture')
+      `);
+      console.log('Seeded default companies.');
+    }
+
+    // Seed skills if empty
+    const [skillsCount] = await connection.query('SELECT COUNT(*) as count FROM skills');
+    if (skillsCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO skills (name) VALUES 
+        ('React'), ('Angular'), ('Vue'), ('Laravel'), ('Node.js'), 
+        ('Java'), ('Spring Boot'), ('Python'), ('Docker'), ('Kubernetes'), 
+        ('AWS'), ('Azure')
+      `);
+      console.log('Seeded default skills.');
+    }
+
+    // Seed ai_prompts if empty
+    const [promptsCount] = await connection.query('SELECT COUNT(*) as count FROM ai_prompts');
+    if (promptsCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO ai_prompts (name, content) VALUES 
+        ('Resume Analysis Prompt', 'You are an ATS resume reviewer. Analyze the resume text, score it against standard technical roles, list missing skills, and give improvement tips.'),
+        ('Technical Interview Prompt', 'You are a technical interviewer. Generate demanding technical interview questions based on the candidate\\'s skills and job description.'),
+        ('HR Prompt', 'You are an HR Manager. Ask behavioral and cultural fit questions using standard STAR methodology.'),
+        ('Behavior Prompt', 'Analyze candidate\\'s answers for behavioral patterns, emotional stability, and professional boundaries.'),
+        ('Feedback Prompt', 'Construct comprehensive, constructive score cards on their technical precision and communication pacing.')
+      `);
+      console.log('Seeded default AI prompts.');
+    }
+
+    // Seed question_bank if empty
+    const [qbCount] = await connection.query('SELECT COUNT(*) as count FROM question_bank');
+    if (qbCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO question_bank (question, type) VALUES 
+        ('What are the primary differences between virtual DOM and real DOM in React?', 'Technical'),
+        ('Explain the execution context and event loop structure in Node.js.', 'Technical'),
+        ('Describe a time when you had to resolve a conflict within a cross-functional dev team.', 'Behavioral'),
+        ('Why do you want to join our company and how does this role fit your career path?', 'HR'),
+        ('What is your methodology for optimizing slow database queries in production?', 'Technical')
+      `);
+      console.log('Seeded default question bank.');
+    }
+
+    // Seed settings if empty
+    const [settingsCount] = await connection.query('SELECT COUNT(*) as count FROM settings');
+    if (settingsCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO settings (key_name, value_data) VALUES 
+        ('app_name', 'PrepFlow AI'),
+        ('logo_url', '/logo.png'),
+        ('email_settings', '{"smtp_host":"smtp.mailtrap.io","smtp_port":2525}'),
+        ('ai_model', 'Llama 3.2'),
+        ('ollama_url', 'http://localhost:11434'),
+        ('api_keys', '{"gemini_api_key":"MOCK_KEY_FOR_TESTING"}'),
+        ('upload_limits_mb', '5'),
+        ('max_interview_duration_mins', '30'),
+        ('session_timeout_mins', '60'),
+        ('password_policy', '{"minLength":8,"requireNumbers":true}')
+      `);
+      console.log('Seeded default settings.');
+    }
+
+    // Seed feedback if empty
+    const [feedbackCount] = await connection.query('SELECT COUNT(*) as count FROM feedback');
+    if (feedbackCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO feedback (user_id, message, reply, is_resolved) VALUES 
+        (1, 'The audio visualizer works wonderfully, but it would be nice to have a darker theme.', 'Thanks! We are adding dark mode control settings soon.', 1),
+        (1, 'Could you add Java Spring Boot mock practice questions set?', NULL, 0)
+      `);
+      console.log('Seeded default user feedback items.');
+    }
+
+    // Seed email_templates if empty
+    const [emailTemplatesCount] = await connection.query('SELECT COUNT(*) as count FROM email_templates');
+    if (emailTemplatesCount[0].count === 0) {
+      await connection.query(`
+        INSERT INTO email_templates (name, subject, body) VALUES 
+        ('Welcome Email', 'Welcome to PrepFlow AI!', 'Hi {{name}},\n\nWelcome to PrepFlow! We are excited to support your mock interview preparation journeys. Upload your resume to start customized mock coaching.'),
+        ('OTP Email', 'Your OTP Verification Code', 'Hi {{name}},\n\nYour OTP code is {{otp}}. This verification code is valid for 10 minutes. Do not share this code with anyone.'),
+        ('Password Reset', 'Password Reset Request', 'Hi {{name}},\n\nWe received a password reset request. Click the link to reset your account password: {{reset_link}}'),
+        ('Interview Complete', 'Mock Practice Session Finished', 'Hi {{name}},\n\nCongratulations! You have completed your mock session for {{role}}. Your performance details are being analyzed.'),
+        ('Report Ready', 'AI Performance Report Available', 'Hi {{name}},\n\nYour detailed interview scorecard is compiled! Open your dashboard to view technical and pacing metric grades.')
+      `);
+      console.log('Seeded default email templates.');
     }
 
     connection.release();

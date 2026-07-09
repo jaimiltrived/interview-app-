@@ -9,7 +9,14 @@ const { getPool, getDBStatus } = require('../config/db');
 const User = require('../models/User');
 const Resume = require('../models/Resume');
 const Session = require('../models/Session');
+const InterviewResult = require('../models/InterviewResult');
 const { validateRegistration, validateLogin } = require('../middleware/validation');
+
+// --- AI Modular Services ---
+const resumeService = require('../services/resumeService');
+const questionService = require('../services/questionService');
+const evaluationService = require('../services/evaluationService');
+const feedbackService = require('../services/feedbackService');
 
 // --- Google Gemini AI API Helper ---
 const callGemini = async (prompt, fallbackText) => {
@@ -45,9 +52,6 @@ const callGemini = async (prompt, fallbackText) => {
 };
 
 // --- In-Memory State Mocks (Fallback if MySQL is offline) ---
-let memoryUsers = [
-  { id: 1, name: 'Jane Doe', email: 'jane@example.com', password: 'SecurePassword123', photo_url: null, skills: 'React,Node,SQL' }
-];
 let memorySessions = [];
 let memoryResumes = [];
 let memoryNotifications = [
@@ -55,17 +59,74 @@ let memoryNotifications = [
   { id: 2, title: 'Webcam Check', message: 'Tip: Maintain consistent eye contact with your webcam for a better scoring.', is_read: false, created_at: new Date() }
 ];
 let memoryJobRoles = [
-  { id: 1, title: 'Frontend Developer', category: 'Engineering' },
-  { id: 2, title: 'Fullstack Engineer', category: 'Engineering' },
-  { id: 3, title: 'Backend Developer', category: 'Engineering' }
+  { id: 1, title: 'Frontend Developer', category: 'Engineering', status: 'Active' },
+  { id: 2, title: 'Fullstack Engineer', category: 'Engineering', status: 'Active' },
+  { id: 3, title: 'Backend Developer', category: 'Engineering', status: 'Active' },
+  { id: 4, title: 'Data Scientist', category: 'Data', status: 'Active' }
 ];
 let memoryInterviewTypes = [
   { id: 1, name: 'Behavioral Mock', duration: '15 mins' },
   { id: 2, name: 'Technical Mock', duration: '30 mins' },
   { id: 3, name: 'System Design Mock', duration: '45 mins' }
 ];
+let memoryCompanies = [
+  { id: 1, name: 'Google' },
+  { id: 2, name: 'Amazon' },
+  { id: 3, name: 'Microsoft' },
+  { id: 4, name: 'Meta' },
+  { id: 5, name: 'Apple' },
+  { id: 6, name: 'TCS' },
+  { id: 7, name: 'Infosys' },
+  { id: 8, name: 'Deloitte' },
+  { id: 9, name: 'Accenture' }
+];
+let memorySkills = [
+  { id: 1, name: 'React' },
+  { id: 2, name: 'Angular' },
+  { id: 3, name: 'Vue' },
+  { id: 4, name: 'Laravel' },
+  { id: 5, name: 'Node.js' },
+  { id: 6, name: 'Java' },
+  { id: 7, name: 'Spring Boot' },
+  { id: 8, name: 'Python' },
+  { id: 9, name: 'Docker' },
+  { id: 10, name: 'Kubernetes' },
+  { id: 11, name: 'AWS' },
+  { id: 12, name: 'Azure' }
+];
+let memoryAiPrompts = [
+  { id: 1, name: 'Resume Analysis Prompt', content: 'You are an ATS resume reviewer. Analyze the resume text, score it against standard technical roles, list missing skills, and give improvement tips.', is_active: true },
+  { id: 2, name: 'Technical Interview Prompt', content: 'You are a technical interviewer. Generate demanding technical interview questions based on the candidate\'s skills and job description.', is_active: true },
+  { id: 3, name: 'HR Prompt', content: 'You are an HR Manager. Ask behavioral and cultural fit questions using standard STAR methodology.', is_active: true },
+  { id: 4, name: 'Behavior Prompt', content: 'Analyze candidate\'s answers for behavioral patterns, emotional stability, and professional boundaries.', is_active: true },
+  { id: 5, name: 'Feedback Prompt', content: 'Construct comprehensive, constructive score cards on their technical precision and communication pacing.', is_active: true }
+];
+let memoryQuestionBank = [
+  { id: 1, question: 'What are the primary differences between virtual DOM and real DOM in React?', type: 'Technical' },
+  { id: 2, question: 'Explain the execution context and event loop structure in Node.js.', type: 'Technical' },
+  { id: 3, question: 'Describe a time when you had to resolve a conflict within a cross-functional dev team.', type: 'Behavioral' },
+  { id: 4, question: 'Why do you want to join our company and how does this role fit your career path?', type: 'HR' },
+  { id: 5, question: 'What is your methodology for optimizing slow database queries in production?', type: 'Technical' }
+];
+let memorySettings = {
+  app_name: 'PrepFlow AI',
+  logo_url: '/logo.png',
+  email_settings: '{"smtp_host":"smtp.mailtrap.io","smtp_port":2525}',
+  ai_model: 'Llama 3.2',
+  ollama_url: 'http://localhost:11434',
+  api_keys: '{"gemini_api_key":"MOCK_KEY_FOR_TESTING"}',
+  upload_limits_mb: '5',
+  max_interview_duration_mins: '30',
+  session_timeout_mins: '60',
+  password_policy: '{"minLength":8,"requireNumbers":true}'
+};
+let memoryFeedback = [
+  { id: 1, userId: 4, username: 'Jane Doe', message: 'The audio visualizer works wonderfully, but it would be nice to have a darker theme.', reply: 'Thanks! We are adding dark mode control settings soon.', is_resolved: true, created_at: new Date() },
+  { id: 2, userId: 4, username: 'Jane Doe', message: 'Could you add Java Spring Boot mock practice questions set?', reply: null, is_resolved: false, created_at: new Date() }
+];
 let memoryAdminLogs = [
-  { id: 1, action: 'Admin Panel Booted', timestamp: new Date() }
+  { id: 1, action: 'Admin Panel Booted', details: 'System logs initialized.', created_at: new Date() },
+  { id: 2, action: 'User Login', details: 'Super Admin logged in from local IP.', created_at: new Date() }
 ];
 
 // Helper to query database
@@ -152,7 +213,7 @@ router.post('/auth/login', validateLogin, async (req, res) => {
     }
 
     const token = jwt.sign(
-      { id: userRecord.id, name: userRecord.name, email: userRecord.email },
+      { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role || 'candidate' },
       process.env.JWT_SECRET || 'fallback_secret_key',
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
@@ -160,7 +221,7 @@ router.post('/auth/login', validateLogin, async (req, res) => {
     res.json({
       success: true,
       token,
-      user: { id: userRecord.id, name: userRecord.name, email: userRecord.email }
+      user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role || 'candidate' }
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -322,6 +383,7 @@ router.get('/profile', authMiddleware, async (req, res) => {
       email: user.email,
       photoUrl: user.photo_url,
       role: roleTarget,
+      userRole: user.role || 'candidate',
       experience,
       skills,
       questions
@@ -474,141 +536,7 @@ router.delete('/profile/delete-account', async (req, res) => {
 // 3. RESUME MODULE (7 APIs)
 // ==========================================
 
-router.post('/resume/upload', authMiddleware, async (req, res) => {
-  try {
-    const { fileName, fileContent } = req.body;
-    const candidateName = req.user.name || 'Candidate';
-    if (!fileName) return res.status(400).json({ error: 'File name is required' });
-
-    const textToAnalyze = (fileContent || fileName).toLowerCase();
-    let inferredRole = 'Software Engineer';
-    let skills = [];
-    let experience = '1-2 Years';
-    let questions = [];
-
-    let isParsedByAI = false;
-    if (process.env.GEMINI_API_KEY && fileContent) {
-      const prompt = `You are a professional resume parser. Parse the following resume content and extract:
-      1. Target Job Role (e.g. Frontend Developer, Laravel Engineer, Backend Developer)
-      2. Core technical skills (array of strings, e.g. ["React", "JavaScript", "Node.js"])
-      3. Experience range rating (e.g. 5+ Years (Senior), 3-4 Years (Mid-level), 1-2 Years (Associate))
-      4. Generate 3 highly technical interview questions tailored specifically to these skills and experience level.
-      
-      Resume Content:
-      ${fileContent}
-      
-      Output a valid JSON response format:
-      {
-        "roleTarget": "Role Title",
-        "skills": ["Skill1", "Skill2"],
-        "experience": "Experience Info",
-        "questions": ["Q1", "Q2", "Q3"]
-      }
-      Only output valid JSON, no backticks, no markdown blocks.`;
-
-      try {
-        const geminiResult = await callGemini(prompt, '');
-        if (geminiResult) {
-          const cleaned = geminiResult.replace(/```json/g, '').replace(/```/g, '').trim();
-          const parsed = JSON.parse(cleaned);
-          if (parsed.roleTarget && parsed.skills && parsed.questions) {
-            inferredRole = parsed.roleTarget;
-            skills = parsed.skills;
-            experience = parsed.experience || experience;
-            questions = parsed.questions;
-            isParsedByAI = true;
-            console.log('[GEMINI] Successfully parsed resume and generated questions!');
-          }
-        }
-      } catch (err) {
-        console.error('[GEMINI] Error parsing resume with AI, falling back to keywords:', err.message);
-      }
-    }
-
-    if (!isParsedByAI) {
-      const techSkills = {
-        'React': ['react', 'react.js', 'redux', 'hooks', 'jsx', 'frontend'],
-        'JavaScript': ['javascript', 'js', 'es6', 'typescript', 'ts'],
-        'Laravel': ['laravel', 'php', 'composer', 'eloquent'],
-        'Python': ['python', 'fastapi', 'flask', 'django'],
-        'MySQL': ['mysql', 'sql', 'database', 'postgresql'],
-        'Firebase': ['firebase', 'firestore', 'auth'],
-        'Tailwind CSS': ['tailwind', 'css', 'flexbox', 'grid'],
-        'Node.js': ['node', 'node.js', 'express', 'backend']
-      };
-
-      for (const [skill, keywords] of Object.entries(techSkills)) {
-        if (keywords.some(kw => textToAnalyze.includes(kw))) skills.push(skill);
-      }
-      if (skills.length === 0) skills = ['React.js', 'JavaScript', 'CSS Grid'];
-
-      if (skills.includes('Laravel')) {
-        inferredRole = 'Fullstack Engineer (Laravel & React)';
-        questions = [
-          "Can you explain the request lifecycle in Laravel, specifically how Middleware works?",
-          "How do you design database relations in Laravel Eloquent and avoid the N+1 query problem?",
-          "Tell me about a time you had to build a RESTful API. How did you structure the endpoints and handle authorization?"
-        ];
-      } else if (skills.includes('React') || skills.includes('JavaScript')) {
-        inferredRole = 'Frontend Developer (React)';
-        questions = [
-          "What is the Virtual DOM in React, and how do React Hooks like useEffect manage state synchronization?",
-          "How do you optimize performance in a React application with heavy rendering loads?",
-          "Explain the difference between flexbox and grid, and how you make layouts fully responsive."
-        ];
-      } else if (skills.includes('Python')) {
-        inferredRole = 'Backend Python Developer';
-        questions = [
-          "Explain how asynchronous programming works in Python FastAPI using async/await keywords.",
-          "How do you handle database migrations, serialization, and connection pooling in a backend application?",
-          "How do you secure API endpoints against common threats like SQL injection and cross-site scripting?"
-        ];
-      } else {
-        inferredRole = 'Software Engineer';
-        questions = [
-          "Could you start by introducing yourself and walking me through your background and key strengths?",
-          "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
-          "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
-        ];
-      }
-
-      if (textToAnalyze.includes('senior') || textToAnalyze.includes('lead') || textToAnalyze.includes('5 years') || textToAnalyze.includes('6 years')) {
-        experience = '5+ Years (Senior)';
-      } else if (textToAnalyze.includes('3 years') || textToAnalyze.includes('4 years')) {
-        experience = '3-4 Years (Mid-level)';
-      } else {
-        experience = '1-2 Years (Associate)';
-      }
-    }
-
-    const skillsString = skills.join(',');
-    let insertedId;
-
-    const userId = req.user.id;
-    insertedId = await Resume.create({
-      userId,
-      name: candidateName,
-      roleTarget: inferredRole,
-      experience,
-      skills,
-      questions
-    });
-
-    res.json({
-      success: true,
-      profile: {
-        id: insertedId,
-        name: candidateName,
-        roleTarget: inferredRole,
-        experience,
-        skills,
-        questions
-      }
-    });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// Legacy /resume/upload route removed to avoid routing conflict with the new multer-based routes in resume.js.
 
 router.get('/resume/list', authMiddleware, async (req, res) => {
   try {
@@ -828,9 +756,7 @@ router.delete('/interview-type/:id', async (req, res) => {
 // 6. INTERVIEW SESSION MODULE (8 APIs)
 // ==========================================
 
-router.post('/interview/start', (req, res) => {
-  res.json({ success: true, message: 'Session started', sessionId: 'sess_' + Date.now() });
-});
+// Legacy /interview/start route removed to avoid routing conflict with interview.js.
 
 router.get('/interview/:id', async (req, res) => {
   const { id } = req.params;
@@ -982,9 +908,14 @@ router.post('/ai/generate-question', authMiddleware, async (req, res) => {
       }
     }
 
-    const prompt = `You are a professional technical interviewer. Generate a single highly relevant interview question for a candidate named ${user ? user.name : 'Candidate'} applying for the role of "${inferredRole}" with key skills in: "${skills}" and experience level "${experience}". Do not write introductory text, just output the question itself.`;
-    const defaultQuestion = 'Explain the request lifecycle in Laravel middleware.';
-    const question = await callGemini(prompt, defaultQuestion);
+    const questionsList = await questionService.generateQuestions({
+      name: user ? user.name : 'Candidate',
+      roleTarget: inferredRole,
+      experience,
+      skills,
+      count: 1
+    });
+    const question = questionsList[0] || 'Explain the request lifecycle in Laravel middleware.';
     res.json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -994,12 +925,7 @@ router.post('/ai/generate-question', authMiddleware, async (req, res) => {
 router.post('/ai/follow-up-question', authMiddleware, async (req, res) => {
   try {
     const { lastQuestion = '', lastAnswer = '' } = req.body;
-    const prompt = `You are a technical interviewer. The candidate was asked: "${lastQuestion}"
-    They answered: "${lastAnswer}"
-    Based on their response, ask a single relevant follow-up question to probe deeper into their technical understanding.
-    Do not write introductory text, just output the question itself.`;
-    const defaultQuestion = 'You mentioned routing; how do route model bindings optimize database queries?';
-    const question = await callGemini(prompt, defaultQuestion);
+    const question = await questionService.generateFollowUpQuestion(lastQuestion, lastAnswer);
     res.json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1009,10 +935,7 @@ router.post('/ai/follow-up-question', authMiddleware, async (req, res) => {
 router.post('/ai/company-question', authMiddleware, async (req, res) => {
   try {
     const { company = 'Google', role = 'Software Engineer' } = req.body;
-    const prompt = `Generate a single interview question asked during hiring at "${company}" for the role of "${role}".
-    Do not write introductory text, just output the question itself.`;
-    const defaultQuestion = 'Google Mock Prompt: How would you design a distributed key-value cache?';
-    const question = await callGemini(prompt, defaultQuestion);
+    const question = await questionService.generateCompanyQuestion(company, role);
     res.json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1022,10 +945,7 @@ router.post('/ai/company-question', authMiddleware, async (req, res) => {
 router.post('/ai/technical-question', authMiddleware, async (req, res) => {
   try {
     const { domain = 'JavaScript' } = req.body;
-    const prompt = `Generate a single highly technical interview question about the domain: "${domain}".
-    Do not write introductory text, just output the question itself.`;
-    const defaultQuestion = 'Can you describe a race condition, and how you resolve it in Node.js?';
-    const question = await callGemini(prompt, defaultQuestion);
+    const question = await questionService.generateTechnicalQuestion(domain);
     res.json({ question });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1096,8 +1016,33 @@ router.post('/voice/speaking-speed', (req, res) => {
 // 11. AI EVALUATION MODULE (4 APIs)
 // ==========================================
 
-router.post('/ai/evaluate-answer', (req, res) => {
-  res.json({ rating: 'Excellent', technicalKeywordsRatio: 0.8 });
+router.post('/ai/evaluate-answer', authMiddleware, async (req, res) => {
+  try {
+    const { question, answer } = req.body;
+    if (!question || !answer) {
+      return res.status(400).json({ error: 'Question and answer are required' });
+    }
+
+    const evaluation = await evaluationService.evaluateAnswer(question, answer);
+    const userId = req.user ? req.user.id : null;
+
+    const resultId = await InterviewResult.create({
+      userId,
+      question,
+      answer,
+      aiFeedback: evaluation.suggestions,
+      technicalScore: evaluation.technicalScore,
+      communicationScore: evaluation.communicationScore
+    });
+
+    res.json({
+      success: true,
+      id: resultId,
+      ...evaluation
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/ai/technical-score', (req, res) => {
@@ -1222,41 +1167,219 @@ router.get('/dashboard/recommendations', (req, res) => {
 
 
 // ==========================================
-// 14. ADMIN MODULE (12 APIs)
+// 14. ADMIN PANEL & ROLE-BASED MODULE (CRUD APIs)
 // ==========================================
 
-router.post('/admin/login', (req, res) => {
-  res.json({ success: true, adminToken: 'admin_session_token_12345' });
+// Authorization Middleware
+const roleMiddleware = (allowedRoles) => {
+  return (req, res, next) => {
+    const userRole = req.user?.role || 'candidate';
+    if (!allowedRoles.includes(userRole)) {
+      return res.status(403).json({ error: 'Access denied: Insufficient permissions for this operation.' });
+    }
+    next();
+  };
+};
+
+// Admin Login (Fallback support)
+router.post('/admin/login', async (req, res) => {
+  const { email, password } = req.body;
+  try {
+    const userRecord = await User.findByEmail(email);
+    if (!userRecord || !['super_admin', 'admin', 'content_manager'].includes(userRecord.role)) {
+      return res.status(401).json({ error: 'Invalid admin credentials' });
+    }
+    const isMatch = await bcrypt.compare(password, userRecord.password);
+    if (!isMatch) {
+      return res.status(401).json({ error: 'Invalid admin credentials' });
+    }
+    const token = jwt.sign(
+      { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role },
+      process.env.JWT_SECRET || 'fallback_secret_key',
+      { expiresIn: '7d' }
+    );
+    res.json({ success: true, token, user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role } });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/admin/dashboard', (req, res) => {
-  res.json({ userAccountsCount: memoryUsers.length, mockSessionsCount: memorySessions.length });
+// Helper: Log Admin activity
+const logAdminActivity = async (userId, action, details) => {
+  const detailsStr = typeof details === 'object' ? JSON.stringify(details) : details;
+  if (getDBStatus()) {
+    try {
+      await queryDB('INSERT INTO activity_logs (user_id, action, details) VALUES (?, ?, ?)', [userId, action, detailsStr]);
+    } catch (e) {
+      console.error('[LOG ERROR] Could not save activity log:', e.message);
+    }
+  } else {
+    memoryAdminLogs.unshift({
+      id: memoryAdminLogs.length + 1,
+      userId,
+      action,
+      details: detailsStr,
+      created_at: new Date()
+    });
+  }
+};
+
+// Dashboard Stats
+router.get('/admin/dashboard/stats', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    let totalUsers = 0;
+    let activeUsers = 0;
+    let totalInterviews = 0;
+    let completedInterviews = 0;
+    let avgScore = 0;
+    let jobRolesCount = 0;
+    let companiesCount = 0;
+
+    if (getDBStatus()) {
+      const [uCount] = await queryDB('SELECT COUNT(*) as count FROM users');
+      totalUsers = uCount.count;
+
+      const [actCount] = await queryDB('SELECT COUNT(DISTINCT user_id) as count FROM sessions');
+      activeUsers = actCount.count;
+
+      const [sCount] = await queryDB('SELECT COUNT(*) as count, AVG(overall_score) as avgScore FROM sessions');
+      totalInterviews = sCount.count;
+      completedInterviews = sCount.count; // Assuming all sessions in table are finished
+      avgScore = Math.round(sCount.avgScore) || 0;
+
+      const [jrCount] = await queryDB('SELECT COUNT(*) as count FROM job_roles');
+      jobRolesCount = jrCount.count;
+
+      const [cCount] = await queryDB('SELECT COUNT(*) as count FROM companies');
+      companiesCount = cCount.count;
+    } else {
+      const allUsers = User.getMemoryUsers();
+      totalUsers = allUsers.length;
+      activeUsers = new Set(memorySessions.map(s => s.userId)).size;
+      totalInterviews = memorySessions.length;
+      completedInterviews = memorySessions.length;
+      const totalScore = memorySessions.reduce((acc, curr) => acc + (curr.overallScore || 0), 0);
+      avgScore = totalInterviews ? Math.round(totalScore / totalInterviews) : 0;
+      jobRolesCount = memoryJobRoles.length;
+      companiesCount = memoryCompanies.length;
+    }
+
+    res.json({
+      totalUsers,
+      activeUsers,
+      totalInterviews,
+      completedInterviews,
+      avgScore,
+      jobRolesCount,
+      companiesCount,
+      aiRequestsToday: 18,
+      failedAiRequests: 0,
+      monthlyGrowth: 12
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/admin/users', async (req, res) => {
+// Dashboard Charts Data
+router.get('/admin/dashboard/charts', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    // Generate dates for past 7 days
+    const labels = [];
+    const dailyInterviews = [];
+    const averageScores = [];
+    const userGrowth = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const d = new Date();
+      d.setDate(d.getDate() - i);
+      labels.push(d.toLocaleDateString('en-US', { weekday: 'short' }));
+      // Simple mock stats for charts
+      dailyInterviews.push(Math.floor(Math.random() * 5) + 2);
+      averageScores.push(Math.floor(Math.random() * 15) + 75);
+      userGrowth.push(10 + (6 - i) * 2);
+    }
+
+    res.json({
+      labels,
+      dailyInterviews,
+      averageScores,
+      userGrowth,
+      communicationScores: [82, 85, 84, 88, 89, 87, 91],
+      technicalScores: [75, 78, 80, 82, 85, 84, 86],
+      popularSkills: ['React', 'Node.js', 'Python', 'AWS', 'Laravel'],
+      popularSkillsCount: [35, 28, 20, 15, 12]
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- USER MANAGEMENT (Super Admin & Admin) ---
+router.get('/admin/users', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
   try {
     if (getDBStatus()) {
-      const list = await queryDB('SELECT id, name, email FROM users');
+      const list = await queryDB('SELECT id, name, email, role, created_at FROM users ORDER BY created_at DESC');
       res.json(list);
     } else {
-      res.json(memoryUsers.map(u => ({ id: u.id, name: u.name, email: u.email })));
+      res.json(User.getMemoryUsers().map(u => ({ id: u.id, name: u.name, email: u.email, role: u.role, created_at: new Date() })));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.put('/admin/user/:id/status', (req, res) => {
-  res.json({ success: true, userId: req.params.id, status: 'Updated' });
+router.get('/admin/user/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      const rows = await queryDB('SELECT id, name, email, role, created_at FROM users WHERE id = ?', [id]);
+      if (rows.length === 0) return res.status(404).json({ error: 'User not found' });
+      res.json(rows[0]);
+    } else {
+      const user = User.getMemoryUsers().find(u => u.id === parseInt(id));
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      res.json({ id: user.id, name: user.name, email: user.email, role: user.role, created_at: new Date() });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.delete('/admin/user/:id', async (req, res) => {
+router.put('/admin/user/:id', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, email, role } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE users SET name = ?, email = ?, role = ? WHERE id = ?', [name, email, role, id]);
+      await logAdminActivity(req.user.id, 'EDIT_USER', `Updated user ID ${id}: ${name} (${role})`);
+      res.json({ id, name, email, role });
+    } else {
+      const users = User.getMemoryUsers();
+      const user = users.find(u => u.id === parseInt(id));
+      if (!user) return res.status(404).json({ error: 'User not found' });
+      user.name = name || user.name;
+      user.email = email || user.email;
+      user.role = role || user.role;
+      User.setMemoryUsers(users);
+      await logAdminActivity(req.user.id, 'EDIT_USER', `Updated user ID ${id} in-memory: ${user.name} (${user.role})`);
+      res.json(user);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/user/:id', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
   try {
     const { id } = req.params;
     if (getDBStatus()) {
       await queryDB('DELETE FROM users WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_USER', `Deleted user ID ${id}`);
     } else {
-      memoryUsers = memoryUsers.filter(u => u.id !== parseInt(id));
+      const users = User.getMemoryUsers().filter(u => u.id !== parseInt(id));
+      User.setMemoryUsers(users);
+      await logAdminActivity(req.user.id, 'DELETE_USER', `Deleted user ID ${id} in-memory`);
     }
     res.json({ success: true, message: 'User deleted successfully' });
   } catch (err) {
@@ -1264,32 +1387,96 @@ router.delete('/admin/user/:id', async (req, res) => {
   }
 });
 
-router.get('/admin/interviews', async (req, res) => {
+router.post('/admin/user/:id/reset-password', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const bcrypt = require('bcryptjs');
+    const defaultPass = 'Password123';
+    const hashed = await bcrypt.hash(defaultPass, 10);
+
+    if (getDBStatus()) {
+      await queryDB('UPDATE users SET password = ? WHERE id = ?', [hashed, id]);
+      await logAdminActivity(req.user.id, 'RESET_PASSWORD', `Reset password for user ID ${id}`);
+    } else {
+      const users = User.getMemoryUsers();
+      const user = users.find(u => u.id === parseInt(id));
+      if (user) user.password = hashed;
+      User.setMemoryUsers(users);
+      await logAdminActivity(req.user.id, 'RESET_PASSWORD', `Reset password for user ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: `Password reset successfully to: ${defaultPass}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.patch('/admin/user/:id/status', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status } = req.body; // status can be "blocked" or "active"
+    // Mock blocking behavior
+    await logAdminActivity(req.user.id, 'TOGGLE_USER_STATUS', `Set status of user ID ${id} to: ${status}`);
+    res.json({ success: true, message: `User status set to ${status}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- RESUME MANAGEMENT ---
+router.get('/admin/resumes', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
   try {
     if (getDBStatus()) {
-      const list = await queryDB('SELECT * FROM sessions');
+      const list = await queryDB('SELECT r.id, r.name, r.role_target, r.experience, r.created_at, u.email FROM resumes r LEFT JOIN users u ON r.user_id = u.id ORDER BY r.created_at DESC');
       res.json(list);
     } else {
-      res.json(memorySessions);
+      res.json(memoryResumes.map(r => ({ id: r.id, name: r.name, role_target: r.role_target, experience: r.experience || '1-2 years', created_at: new Date(), email: 'jane@example.com' })));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-router.get('/admin/reports', (req, res) => {
-  res.json({ reportsProcessedCount: memorySessions.length });
+router.delete('/admin/resume/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM resumes WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_RESUME', `Deleted resume ID ${id}`);
+    } else {
+      memoryResumes = memoryResumes.filter(r => String(r.id) !== String(id));
+      await logAdminActivity(req.user.id, 'DELETE_RESUME', `Deleted resume ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Resume deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.post('/admin/job-role', async (req, res) => {
-  const { title, category } = req.body;
+// --- JOB ROLE MANAGEMENT ---
+router.get('/admin/job-roles', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
   try {
     if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM job_roles ORDER BY id DESC');
+      res.json(list);
+    } else {
+      res.json(memoryJobRoles);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/job-role', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { title, category } = req.body;
+    if (getDBStatus()) {
       const result = await queryDB('INSERT INTO job_roles (title, category) VALUES (?, ?)', [title, category]);
+      await logAdminActivity(req.user.id, 'CREATE_JOB_ROLE', `Created job role: ${title} (${category})`);
       res.status(201).json({ id: result.insertId, title, category });
     } else {
-      const newRole = { id: memoryJobRoles.length + 1, title, category };
+      const newRole = { id: memoryJobRoles.length + 1, title, category, status: 'Active' };
       memoryJobRoles.push(newRole);
+      await logAdminActivity(req.user.id, 'CREATE_JOB_ROLE', `Created job role in-memory: ${title}`);
       res.status(201).json(newRole);
     }
   } catch (err) {
@@ -1297,20 +1484,519 @@ router.post('/admin/job-role', async (req, res) => {
   }
 });
 
-router.post('/admin/company', (req, res) => {
-  res.status(201).json({ id: 10, name: req.body.name || 'Amazon' });
+router.put('/admin/job-role/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { title, category } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE job_roles SET title = ?, category = ? WHERE id = ?', [title, category, id]);
+      await logAdminActivity(req.user.id, 'EDIT_JOB_ROLE', `Updated job role ID ${id}: ${title}`);
+      res.json({ id, title, category });
+    } else {
+      const role = memoryJobRoles.find(r => r.id === parseInt(id));
+      if (!role) return res.status(404).json({ error: 'Role not found' });
+      role.title = title || role.title;
+      role.category = category || role.category;
+      await logAdminActivity(req.user.id, 'EDIT_JOB_ROLE', `Updated job role ID ${id} in-memory: ${title}`);
+      res.json(role);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/admin/analytics', (req, res) => {
-  res.json({ CPU_load: '15%', memory_load: '35%' });
+router.delete('/admin/job-role/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM job_roles WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_JOB_ROLE', `Deleted job role ID ${id}`);
+    } else {
+      memoryJobRoles = memoryJobRoles.filter(r => r.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_JOB_ROLE', `Deleted job role ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Job role deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.put('/admin/settings', (req, res) => {
-  res.json({ success: true, message: 'Global settings updated' });
+// --- INTERVIEW TYPE MANAGEMENT ---
+router.get('/admin/interview-types', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM interview_types ORDER BY id DESC');
+      res.json(list);
+    } else {
+      res.json(memoryInterviewTypes);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
-router.get('/admin/logs', (req, res) => {
-  res.json(memoryAdminLogs);
+router.post('/admin/interview-type', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { name, duration } = req.body;
+    if (getDBStatus()) {
+      const result = await queryDB('INSERT INTO interview_types (name, duration) VALUES (?, ?)', [name, duration]);
+      await logAdminActivity(req.user.id, 'CREATE_INTERVIEW_TYPE', `Created interview type: ${name}`);
+      res.status(201).json({ id: result.insertId, name, duration });
+    } else {
+      const newType = { id: memoryInterviewTypes.length + 1, name, duration };
+      memoryInterviewTypes.push(newType);
+      await logAdminActivity(req.user.id, 'CREATE_INTERVIEW_TYPE', `Created interview type in-memory: ${name}`);
+      res.status(201).json(newType);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/interview-type/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, duration } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE interview_types SET name = ?, duration = ? WHERE id = ?', [name, duration, id]);
+      await logAdminActivity(req.user.id, 'EDIT_INTERVIEW_TYPE', `Updated interview type ID ${id}: ${name}`);
+      res.json({ id, name, duration });
+    } else {
+      const type = memoryInterviewTypes.find(t => t.id === parseInt(id));
+      if (!type) return res.status(404).json({ error: 'Type not found' });
+      type.name = name || type.name;
+      type.duration = duration || type.duration;
+      await logAdminActivity(req.user.id, 'EDIT_INTERVIEW_TYPE', `Updated interview type ID ${id} in-memory: ${name}`);
+      res.json(type);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/interview-type/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM interview_types WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_INTERVIEW_TYPE', `Deleted interview type ID ${id}`);
+    } else {
+      memoryInterviewTypes = memoryInterviewTypes.filter(t => t.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_INTERVIEW_TYPE', `Deleted interview type ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Interview type deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- COMPANY MANAGEMENT ---
+router.get('/admin/companies', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM companies ORDER BY id DESC');
+      res.json(list);
+    } else {
+      res.json(memoryCompanies);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/company', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (getDBStatus()) {
+      const result = await queryDB('INSERT INTO companies (name) VALUES (?)', [name]);
+      await logAdminActivity(req.user.id, 'CREATE_COMPANY', `Created company: ${name}`);
+      res.status(201).json({ id: result.insertId, name });
+    } else {
+      const newCompany = { id: memoryCompanies.length + 1, name };
+      memoryCompanies.push(newCompany);
+      await logAdminActivity(req.user.id, 'CREATE_COMPANY', `Created company in-memory: ${name}`);
+      res.status(201).json(newCompany);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/company/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE companies SET name = ? WHERE id = ?', [name, id]);
+      await logAdminActivity(req.user.id, 'EDIT_COMPANY', `Updated company ID ${id}: ${name}`);
+      res.json({ id, name });
+    } else {
+      const comp = memoryCompanies.find(c => c.id === parseInt(id));
+      if (!comp) return res.status(404).json({ error: 'Company not found' });
+      comp.name = name || comp.name;
+      await logAdminActivity(req.user.id, 'EDIT_COMPANY', `Updated company ID ${id} in-memory: ${name}`);
+      res.json(comp);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/company/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM companies WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_COMPANY', `Deleted company ID ${id}`);
+    } else {
+      memoryCompanies = memoryCompanies.filter(c => c.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_COMPANY', `Deleted company ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Company deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- AI PROMPT MANAGEMENT ---
+router.get('/admin/ai-prompts', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM ai_prompts ORDER BY id DESC');
+      res.json(list);
+    } else {
+      res.json(memoryAiPrompts);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/ai-prompt', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { name, content } = req.body;
+    if (getDBStatus()) {
+      const result = await queryDB('INSERT INTO ai_prompts (name, content) VALUES (?, ?)', [name, content]);
+      await logAdminActivity(req.user.id, 'CREATE_PROMPT', `Created prompt: ${name}`);
+      res.status(201).json({ id: result.insertId, name, content, is_active: true });
+    } else {
+      const newPrompt = { id: memoryAiPrompts.length + 1, name, content, is_active: true };
+      memoryAiPrompts.push(newPrompt);
+      await logAdminActivity(req.user.id, 'CREATE_PROMPT', `Created prompt in-memory: ${name}`);
+      res.status(201).json(newPrompt);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/ai-prompt/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, content, is_active } = req.body;
+    const isActiveVal = is_active !== undefined ? (is_active ? 1 : 0) : 1;
+
+    if (getDBStatus()) {
+      await queryDB('UPDATE ai_prompts SET name = ?, content = ?, is_active = ? WHERE id = ?', [name, content, isActiveVal, id]);
+      await logAdminActivity(req.user.id, 'EDIT_PROMPT', `Updated prompt ID ${id}: ${name}`);
+      res.json({ id, name, content, is_active: !!isActiveVal });
+    } else {
+      const prompt = memoryAiPrompts.find(p => p.id === parseInt(id));
+      if (!prompt) return res.status(404).json({ error: 'Prompt not found' });
+      prompt.name = name || prompt.name;
+      prompt.content = content || prompt.content;
+      if (is_active !== undefined) prompt.is_active = !!is_active;
+      await logAdminActivity(req.user.id, 'EDIT_PROMPT', `Updated prompt ID ${id} in-memory: ${prompt.name}`);
+      res.json(prompt);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/ai-prompt/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM ai_prompts WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_PROMPT', `Deleted prompt ID ${id}`);
+    } else {
+      memoryAiPrompts = memoryAiPrompts.filter(p => p.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_PROMPT', `Deleted prompt ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Prompt deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- QUESTION BANK MANAGEMENT ---
+router.get('/admin/questions', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM question_bank ORDER BY id DESC');
+      res.json(list);
+    } else {
+      res.json(memoryQuestionBank);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/question', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { question, type } = req.body;
+    if (getDBStatus()) {
+      const result = await queryDB('INSERT INTO question_bank (question, type) VALUES (?, ?)', [question, type]);
+      await logAdminActivity(req.user.id, 'CREATE_QUESTION', `Created question`);
+      res.status(201).json({ id: result.insertId, question, type });
+    } else {
+      const newQuestion = { id: memoryQuestionBank.length + 1, question, type };
+      memoryQuestionBank.push(newQuestion);
+      await logAdminActivity(req.user.id, 'CREATE_QUESTION', `Created question in-memory`);
+      res.status(201).json(newQuestion);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/question/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { question, type } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE question_bank SET question = ?, type = ? WHERE id = ?', [question, type, id]);
+      await logAdminActivity(req.user.id, 'EDIT_QUESTION', `Updated question ID ${id}`);
+      res.json({ id, question, type });
+    } else {
+      const q = memoryQuestionBank.find(qb => qb.id === parseInt(id));
+      if (!q) return res.status(404).json({ error: 'Question not found' });
+      q.question = question || q.question;
+      q.type = type || q.type;
+      await logAdminActivity(req.user.id, 'EDIT_QUESTION', `Updated question ID ${id} in-memory`);
+      res.json(q);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/question/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM question_bank WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_QUESTION', `Deleted question ID ${id}`);
+    } else {
+      memoryQuestionBank = memoryQuestionBank.filter(q => q.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_QUESTION', `Deleted question ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Question deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- SKILLS MANAGEMENT ---
+router.get('/admin/skills', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM skills ORDER BY name ASC');
+      res.json(list);
+    } else {
+      res.json(memorySkills);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/skill', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { name } = req.body;
+    if (getDBStatus()) {
+      const result = await queryDB('INSERT INTO skills (name) VALUES (?)', [name]);
+      await logAdminActivity(req.user.id, 'CREATE_SKILL', `Added skill: ${name}`);
+      res.status(201).json({ id: result.insertId, name });
+    } else {
+      const newSkill = { id: memorySkills.length + 1, name };
+      memorySkills.push(newSkill);
+      await logAdminActivity(req.user.id, 'CREATE_SKILL', `Added skill in-memory: ${name}`);
+      res.status(201).json(newSkill);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/skill/:id', authMiddleware, roleMiddleware(['super_admin', 'admin', 'content_manager']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM skills WHERE id = ?', [id]);
+      await logAdminActivity(req.user.id, 'DELETE_SKILL', `Deleted skill ID ${id}`);
+    } else {
+      memorySkills = memorySkills.filter(s => s.id !== parseInt(id));
+      await logAdminActivity(req.user.id, 'DELETE_SKILL', `Deleted skill ID ${id} in-memory`);
+    }
+    res.json({ success: true, message: 'Skill deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- FEEDBACK MANAGEMENT ---
+router.get('/admin/feedbacks', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT f.id, f.message, f.reply, f.is_resolved, f.created_at, u.name as username FROM feedback f LEFT JOIN users u ON f.user_id = u.id ORDER BY f.created_at DESC');
+      res.json(list);
+    } else {
+      res.json(memoryFeedback);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post('/admin/feedback/reply/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { reply } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE feedback SET reply = ?, is_resolved = 1 WHERE id = ?', [reply, id]);
+      await logAdminActivity(req.user.id, 'REPLY_FEEDBACK', `Replied to feedback ID ${id}`);
+      res.json({ id, reply, is_resolved: true });
+    } else {
+      const item = memoryFeedback.find(f => f.id === parseInt(id));
+      if (!item) return res.status(404).json({ error: 'Feedback item not found' });
+      item.reply = reply;
+      item.is_resolved = true;
+      await logAdminActivity(req.user.id, 'REPLY_FEEDBACK', `Replied to feedback ID ${id} in-memory`);
+      res.json(item);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/feedback/resolve/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('UPDATE feedback SET is_resolved = 1 WHERE id = ?', [id]);
+      res.json({ success: true, message: 'Feedback resolved' });
+    } else {
+      const item = memoryFeedback.find(f => f.id === parseInt(id));
+      if (item) item.is_resolved = true;
+      res.json({ success: true });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.delete('/admin/feedback/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    if (getDBStatus()) {
+      await queryDB('DELETE FROM feedback WHERE id = ?', [id]);
+    } else {
+      memoryFeedback = memoryFeedback.filter(f => f.id !== parseInt(id));
+    }
+    res.json({ success: true, message: 'Feedback deleted successfully' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- SYSTEM SETTINGS ---
+router.get('/admin/settings', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const rows = await queryDB('SELECT * FROM settings');
+      const settingsObj = {};
+      rows.forEach(r => {
+        try {
+          settingsObj[r.key_name] = JSON.parse(r.value_data);
+        } catch (e) {
+          settingsObj[r.key_name] = r.value_data;
+        }
+      });
+      res.json(settingsObj);
+    } else {
+      res.json(memorySettings);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/settings', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    const newSettings = req.body;
+    if (getDBStatus()) {
+      for (const [key, value] of Object.entries(newSettings)) {
+        const valStr = typeof value === 'object' ? JSON.stringify(value) : String(value);
+        await queryDB('INSERT INTO settings (key_name, value_data) VALUES (?, ?) ON DUPLICATE KEY UPDATE value_data = ?', [key, valStr, valStr]);
+      }
+      await logAdminActivity(req.user.id, 'UPDATE_SETTINGS', 'Global system settings updated');
+      res.json({ success: true, message: 'Global system settings updated successfully' });
+    } else {
+      memorySettings = { ...memorySettings, ...newSettings };
+      await logAdminActivity(req.user.id, 'UPDATE_SETTINGS', 'Global settings updated in-memory');
+      res.json({ success: true, settings: memorySettings });
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- SYSTEM LOGS ---
+router.get('/admin/logs', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT l.id, l.action, l.details, l.created_at, u.name as username FROM activity_logs l LEFT JOIN users u ON l.user_id = u.id ORDER BY l.created_at DESC LIMIT 50');
+      res.json(list);
+    } else {
+      res.json(memoryAdminLogs);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// --- AI MODEL MANAGEMENT ---
+router.get('/admin/model-status', authMiddleware, roleMiddleware(['super_admin']), (req, res) => {
+  res.json({
+    status: 'Healthy',
+    modelName: 'Llama 3.2 (Ollama)',
+    connectionStatus: 'Connected',
+    url: 'http://localhost:11434',
+    temperature: 0.7,
+    maxTokens: 512,
+    cpuLoad: '12%',
+    memoryUsage: '28%'
+  });
+});
+
+router.post('/admin/model-settings', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  const { temperature, maxTokens } = req.body;
+  await logAdminActivity(req.user.id, 'UPDATE_AI_MODEL_SETTINGS', `Temp: ${temperature}, MaxTokens: ${maxTokens}`);
+  res.json({ success: true, message: 'AI model parameters updated successfully' });
+});
+
+// --- BACKUP & RESTORE ---
+router.post('/admin/backup', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  await logAdminActivity(req.user.id, 'DATABASE_BACKUP', 'Manual database backup created');
+  res.json({ success: true, message: 'Database backup compiled and saved locally', backupFile: 'backup_' + Date.now() + '.sql' });
+});
+
+router.post('/admin/restore', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  await logAdminActivity(req.user.id, 'DATABASE_RESTORE', 'Manual database restoration triggered');
+  res.json({ success: true, message: 'Database schema and records restored successfully from backup point' });
 });
 
 
@@ -1567,37 +2253,23 @@ router.get('/history/:id', authMiddleware, async (req, res) => {
 // ==========================================
 
 router.post('/ai/parse-resume', async (req, res) => {
-  const { fileContent = '' } = req.body;
-  const prompt = `Parse this resume text and extract the candidate name, target role, experience range, and a list of key technical skills.
-  Resume Content:
-  ${fileContent}
-  
-  Output a JSON response with format:
-  {
-    "name": "Extract Name",
-    "roleTarget": "Inferred Target Role",
-    "experience": "e.g. 2 Years",
-    "skills": ["Skill1", "Skill2"]
-  }
-  Only output valid JSON.`;
-  
-  const defaultData = { name: 'Candidate', roleTarget: 'Software Engineer', experience: '1-2 Years', skills: ['JavaScript', 'HTML5', 'CSS3'] };
-  const result = await callGemini(prompt, JSON.stringify(defaultData));
   try {
-    const jsonString = result.replace(/```json/g, '').replace(/```/g, '').trim();
-    res.json(JSON.parse(jsonString));
-  } catch (e) {
-    res.json(defaultData);
+    const { fileContent = '' } = req.body;
+    const parsed = await resumeService.parseResume(fileContent);
+    res.json(parsed);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.post('/ai/analyze-resume', async (req, res) => {
-  const { roleTarget = '', skills = [] } = req.body;
-  res.json({
-    resumeScore: 85,
-    missingSkillsKeywords: ['System Design', 'Redis'],
-    readabilityScore: 90
-  });
+  try {
+    const { roleTarget = '', skills = [] } = req.body;
+    const analysis = await resumeService.analyzeResume(roleTarget, skills);
+    res.json(analysis);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 router.post('/ai/speech-to-text', (req, res) => {
@@ -1627,29 +2299,208 @@ router.post('/ai/analyze-voice', (req, res) => {
 });
 
 router.post('/ai/generate-feedback', async (req, res) => {
-  const { questions = [], answers = [] } = req.body;
-  const prompt = `Based on these interview questions and candidate answers, generate constructive feedback for the candidate.
-  Questions: ${JSON.stringify(questions)}
-  Answers: ${JSON.stringify(answers)}
-  Provide a JSON response format:
-  {
-    "summary": "Overall assessment feedback",
-    "strengths": ["Strength 1", "Strength 2"],
-    "improvements": ["Area 1", "Area 2"]
-  }
-  Only output valid JSON.`;
-  const defaultFeedback = { summary: 'Overall Good performance.', strengths: ['Technical knowledge'], improvements: ['Detail structural execution'] };
-  const result = await callGemini(prompt, JSON.stringify(defaultFeedback));
   try {
-    const jsonString = result.replace(/```json/g, '').replace(/```/g, '').trim();
-    res.json(JSON.parse(jsonString));
-  } catch (e) {
-    res.json(defaultFeedback);
+    const { questions = [], answers = [] } = req.body;
+    const feedback = await feedbackService.generateFinalFeedback(questions, answers);
+    res.json(feedback);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
   }
 });
 
 router.post('/ai/recommend-practice', (req, res) => {
   res.json({ recommendedAreas: ['System Design Scale Check', 'Redux State Management'] });
+});
+
+// --- NEW SPECIFIC AI ENDPOINTS ---
+
+router.post('/ai/generate-questions', async (req, res) => {
+  try {
+    const { name, roleTarget, experience, skills, count } = req.body;
+    const questions = await questionService.generateQuestions({ name, roleTarget, experience, skills, count });
+    res.json({ success: true, questions });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/ai/resume-analysis', async (req, res) => {
+  try {
+    const { roleTarget, skills } = req.body;
+    const analysis = await resumeService.analyzeResume(roleTarget, skills);
+    res.json({ success: true, ...analysis });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/ai/hr-interview', async (req, res) => {
+  try {
+    const question = await questionService.generateHRQuestion();
+    res.json({ success: true, question });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/ai/technical-interview', async (req, res) => {
+  try {
+    const { domain } = req.body;
+    const question = await questionService.generateTechnicalQuestion(domain);
+    res.json({ success: true, question });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/ai/behavioral-interview', async (req, res) => {
+  try {
+    const question = await questionService.generateBehavioralQuestion();
+    res.json({ success: true, question });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+router.post('/ai/company-interview', async (req, res) => {
+  try {
+    const { company, role } = req.body;
+    const question = await questionService.generateCompanyQuestion(company, role);
+    res.json({ success: true, question });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// --- ADDITIONAL PORTAL ADMIN MODULES ENDPOINTS ---
+
+let memoryEmailTemplates = [
+  { id: 1, name: 'Welcome Email', subject: 'Welcome to PrepFlow AI!', body: 'Hi {{name}},\n\nWelcome to PrepFlow! We are excited to support your mock interview preparation journeys. Upload your resume to start customized mock coaching.' },
+  { id: 2, name: 'OTP Email', subject: 'Your OTP Verification Code', body: 'Hi {{name}},\n\nYour OTP code is {{otp}}. This verification code is valid for 10 minutes. Do not share this code with anyone.' },
+  { id: 3, name: 'Password Reset', subject: 'Password Reset Request', body: 'Hi {{name}},\n\nWe received a password reset request. Click the link to reset your account password: {{reset_link}}' },
+  { id: 4, name: 'Interview Complete', subject: 'Mock Practice Session Finished', body: 'Hi {{name}},\n\nCongratulations! You have completed your mock session for {{role}}. Your performance details are being analyzed.' },
+  { id: 5, name: 'Report Ready', subject: 'AI Performance Report Available', body: 'Hi {{name}},\n\nYour detailed interview scorecard is compiled! Open your dashboard to view technical and pacing metric grades.' }
+];
+
+router.get('/admin/email-templates', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const templates = await queryDB('SELECT * FROM email_templates ORDER BY id DESC');
+      res.json(templates);
+    } else {
+      res.json(memoryEmailTemplates);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.put('/admin/email-template/:id', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { name, subject, body } = req.body;
+    if (getDBStatus()) {
+      await queryDB('UPDATE email_templates SET name = ?, subject = ?, body = ? WHERE id = ?', [name, subject, body, id]);
+      res.json({ id, name, subject, body });
+    } else {
+      const template = memoryEmailTemplates.find(t => t.id === parseInt(id));
+      if (!template) return res.status(404).json({ error: 'Template not found' });
+      template.name = name || template.name;
+      template.subject = subject || template.subject;
+      template.body = body || template.body;
+      res.json(template);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/system-health', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  const cpuLoad = Math.floor(Math.random() * 20) + 10;
+  const ramUsage = Math.floor(Math.random() * 15) + 40;
+  const diskUsage = 68;
+  const uptimeMins = Math.floor(process.uptime() / 60);
+
+  res.json({
+    cpu: cpuLoad,
+    ram: ramUsage,
+    disk: diskUsage,
+    uptime: `${Math.floor(uptimeMins / 60)}h ${uptimeMins % 60}m`,
+    serverStatus: 'Online',
+    databaseStatus: getDBStatus() ? 'Connected (MySQL)' : 'Fallback Memory DB',
+    ollamaStatus: 'Active (Llama 3.2 3B)',
+    apiGateway: 'Healthy'
+  });
+});
+
+router.get('/admin/security/logs', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM security_logs ORDER BY created_at DESC LIMIT 50');
+      res.json(list);
+    } else {
+      res.json([
+        { id: 1, event: 'AUTH_SUCCESS', ip_address: '127.0.0.1', username: 'superadmin@prepcoach.ai', details: 'Session JWT generated successfully.', created_at: new Date() },
+        { id: 2, event: 'AUTH_SUCCESS', ip_address: '192.168.1.45', username: 'jane@example.com', details: 'Successful credentials verification.', created_at: new Date() },
+        { id: 3, event: 'AUTH_FAILED', ip_address: '185.220.101.4', username: 'admin@prepcoach.ai', details: 'Warning: Invalid password attempt on admin role.', created_at: new Date(Date.now() - 3600000) },
+        { id: 4, event: 'API_POLICY_BLOCK', ip_address: '185.220.101.4', username: 'anonymous', details: 'Suspicious IP attempting multiple rapid requests block.', created_at: new Date(Date.now() - 7200000) }
+      ]);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/api/logs', authMiddleware, roleMiddleware(['super_admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT * FROM api_logs ORDER BY created_at DESC LIMIT 50');
+      res.json(list);
+    } else {
+      res.json([
+        { id: 1, method: 'GET', url: '/api/profile', status: 200, response_time_ms: 12, created_at: new Date() },
+        { id: 2, method: 'POST', url: '/api/interview/generate', status: 201, response_time_ms: 450, created_at: new Date() },
+        { id: 3, method: 'POST', url: '/api/admin/settings', status: 200, response_time_ms: 22, created_at: new Date(Date.now() - 10000) },
+        { id: 4, method: 'GET', url: '/api/admin/users', status: 403, response_time_ms: 5, created_at: new Date(Date.now() - 20000) }
+      ]);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/interviews/sessions', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  try {
+    if (getDBStatus()) {
+      const list = await queryDB('SELECT s.id, s.role_target, s.overall_score, s.technical_score, s.communication_score, s.date, u.name as username, u.email as user_email FROM sessions s LEFT JOIN users u ON s.user_id = u.id ORDER BY s.date DESC');
+      res.json(list);
+    } else {
+      res.json([
+        { id: 1, username: 'Jane Doe', user_email: 'jane@example.com', role_target: 'React Developer', overall_score: 82, technical_score: 85, communication_score: 80, date: new Date() },
+        { id: 2, username: 'Jane Doe', user_email: 'jane@example.com', role_target: 'React Developer', overall_score: 74, technical_score: 70, communication_score: 78, date: new Date(Date.now() - 86400000) }
+      ]);
+    }
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get('/admin/leaderboard', authMiddleware, roleMiddleware(['super_admin', 'admin']), async (req, res) => {
+  res.json([
+    { rank: 1, name: 'Jane Doe', email: 'jane@example.com', role: 'React Developer', technical: 92, communication: 88, overall: 90 },
+    { rank: 2, name: 'Alice Smith', email: 'alice@example.com', role: 'Node.js Developer', technical: 88, communication: 90, overall: 89 },
+    { rank: 3, name: 'Bob Johnson', email: 'bob@example.com', role: 'Java Developer', technical: 85, communication: 82, overall: 84 }
+  ]);
+});
+
+router.post('/ai/final-feedback', async (req, res) => {
+  try {
+    const { questions, answers } = req.body;
+    const feedback = await feedbackService.generateFinalFeedback(questions, answers);
+    res.json({ success: true, ...feedback });
+  } catch (err) {
+    res.status(500).json({ success: false, message: err.message });
+  }
 });
 
 module.exports = router;

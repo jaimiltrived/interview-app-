@@ -5,6 +5,8 @@ const swaggerUi = require('swagger-ui-express');
 const swaggerJsdoc = require('swagger-jsdoc');
 const { connectDB } = require('./config/db');
 const apiRoutes = require('./routes/api');
+const resumeRoutes = require('./routes/resume');
+const interviewRoutes = require('./routes/interview');
 const swaggerPaths = require('./config/swaggerPaths');
 const errorHandler = require('./middleware/errorHandler');
 
@@ -67,6 +69,8 @@ app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 // API Routes prefix
 app.use('/api', apiRoutes);
+app.use('/api', resumeRoutes);
+app.use('/api', interviewRoutes);
 
 // Global Error Handler Middleware
 app.use(errorHandler);

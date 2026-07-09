@@ -7,11 +7,21 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   const [isListening, setIsListening] = useState(false);
   const [liveTranscript, setLiveTranscript] = useState('');
   
+  // Setup & Selection States
+  const [isStarted, setIsStarted] = useState(false);
+  const [practiceMode, setPracticeMode] = useState('general'); // 'general' | 'resume'
+  const [activeResume, setActiveResume] = useState(null);
+  const [fetchingResume, setFetchingResume] = useState(false);
+  const [loading, setLoading] = useState(false);
+
   // Real-time Metrics State
   const [wpm, setWpm] = useState(0);
   const [fillerCount, setFillerCount] = useState(0);
   const [eyeContact, setEyeContact] = useState(90);
   const [confidence, setConfidence] = useState('Confident');
+
+  // Elapsed Timer state
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
 
   // Media Streams State
   const [videoStream, setVideoStream] = useState(null);
@@ -33,38 +43,123 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   // Animation frames
   const canvasAnimRef = useRef(null);
 
-  // Initializing questions and media stream
+  // Initializing questions lookup or instant start
   useEffect(() => {
-    // Determine target questions
-    const qList = userProfile.questions && userProfile.questions.length > 0
-      ? userProfile.questions
-      : [
-          "Could you start by introducing yourself and walking me through your background and key strengths?",
-          "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
-          "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
-        ];
-    
+    if (userProfile.questions && userProfile.questions.length > 0) {
+      const qList = userProfile.questions;
+      setQuestions(qList);
+      setIsStarted(true);
+      startHardwareStreams();
+      setupSpeechRecognition();
+      setTimeout(() => {
+        loadQuestionPrompt(0, qList[0]);
+      }, 1500);
+      return;
+    }
+
+    // Check if the user has an active resume stored in the database
+    const checkResume = async () => {
+      setFetchingResume(true);
+      try {
+        const token = localStorage.getItem('coach_jwt_token');
+        if (!token) return;
+
+        const res = await fetch('/api/resume/latest', {
+          headers: { 'Authorization': `Bearer ${token}` }
+        });
+        const data = await res.json();
+        if (data.success && data.resume) {
+          setActiveResume(data.resume);
+          setPracticeMode('resume'); // Default to resume mode if they have one
+        }
+      } catch (err) {
+        console.warn('Could not query active resume:', err);
+      } finally {
+        setFetchingResume(false);
+      }
+    };
+    checkResume();
+
+    return () => {
+      cleanupResources();
+    };
+  }, []);
+
+  const handleStartSession = async () => {
+    setLoading(true);
+    let qList = [];
+
+    if (practiceMode === 'resume' && activeResume) {
+      try {
+        const token = localStorage.getItem('coach_jwt_token');
+        const genRes = await fetch('/api/interview/generate', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            name: activeResume.name,
+            roleTarget: activeResume.roleTarget,
+            skills: activeResume.skills,
+            projects: activeResume.projects || []
+          })
+        });
+        const genData = await genRes.json();
+        if (genData.success) {
+          const flatQuestions = [
+            ...(genData.questions.hr || []),
+            ...(genData.questions.technical || []),
+            ...(genData.questions.project || []),
+            ...(genData.questions.behavioral || [])
+          ];
+          qList = flatQuestions;
+        }
+      } catch (err) {
+        console.error('Failed to generate resume questions:', err);
+      }
+    }
+
+    if (qList.length === 0) {
+      // General Mode default questions fallback
+      qList = [
+        "Could you start by introducing yourself and walking me through your background and key strengths?",
+        "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
+        "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
+      ];
+    }
+
     setQuestions(qList);
     answersRef.current = [];
     wpmHistoryRef.current = [];
     eyeHistoryRef.current = [];
     fillerHistoryRef.current = [];
 
-    // Start hardware streams
-    startHardwareStreams();
+    // Lazy load hardware media streams
+    await startHardwareStreams();
 
-    // Start speech recognition setup
+    // Lazy load speech recognition
     setupSpeechRecognition();
 
-    // Load first question
+    setIsStarted(true);
+    setLoading(false);
+
+    // Prompt first question
     setTimeout(() => {
       loadQuestionPrompt(0, qList[0]);
     }, 1500);
+  };
 
-    return () => {
-      cleanupResources();
-    };
-  }, []);
+  // Timer loop when coach stops speaking
+  useEffect(() => {
+    let timerInterval;
+    if (!coachSpeaking) {
+      timerInterval = setInterval(() => {
+        setElapsedSeconds(prev => prev + 1);
+      }, 1000);
+    }
+    return () => clearInterval(timerInterval);
+  }, [coachSpeaking]);
 
   // Web Streams Startup
   const startHardwareStreams = async () => {
@@ -157,7 +252,7 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
       setConfidence(currentExpr);
 
       // Box corner styling
-      ctx.strokeStyle = hasEyeContact ? 'rgba(16, 185, 129, 0.85)' : 'rgba(245, 158, 11, 0.85)'; // Green / Orange
+      ctx.strokeStyle = hasEyeContact ? 'rgba(22, 163, 74, 0.85)' : 'rgba(234, 88, 12, 0.85)'; // Green / Orange
       ctx.lineWidth = 2;
       ctx.shadowBlur = 6;
       ctx.shadowColor = ctx.strokeStyle;
@@ -176,7 +271,7 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
       ctx.beginPath(); ctx.moveTo(x + faceW - len, y + faceH); ctx.lineTo(x + faceW, y + faceH); ctx.lineTo(x + faceW, y + faceH - len); ctx.stroke();
 
       // Draw target crosshair dot nodes
-      ctx.fillStyle = hasEyeContact ? '#10b981' : '#f59e0b';
+      ctx.fillStyle = hasEyeContact ? '#16a34a' : '#ea580c';
       ctx.shadowBlur = 0;
       const drawNode = (nx, ny) => {
         ctx.beginPath(); ctx.arc(nx, ny, 3, 0, 2*Math.PI); ctx.fill();
@@ -202,13 +297,15 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   };
 
   // Text-To-Speech Playback
-  const loadQuestionPrompt = (idx, text) => {
+  const loadQuestionPrompt = (idx, questionObj) => {
     setCurrentIdx(idx);
     setCoachSpeaking(true);
     setIsListening(false);
     setLiveTranscript('');
     setWpm(0);
     setFillerCount(0);
+
+    const text = questionObj?.question || questionObj;
 
     if ('speechSynthesis' in window) {
       window.speechSynthesis.cancel();
@@ -299,6 +396,26 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
     fillerHistoryRef.current.push(fillerCount);
     eyeHistoryRef.current.push(eyeContact);
 
+    // Call intermediate evaluation endpoint
+    const questionObj = questions[currentIdx];
+    const questionId = questionObj?.id;
+    if (questionId) {
+      try {
+        const token = localStorage.getItem('coach_jwt_token');
+        await fetch('/api/interview/answer', {
+          method: 'POST',
+          headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+          },
+          body: JSON.stringify({ questionId, answer: finalAnswer })
+        });
+        console.log('[AI] Successfully logged intermediate answer score.');
+      } catch (err) {
+        console.warn('[AI] Failed to log intermediate answer score:', err.message);
+      }
+    }
+
     const nextIdx = currentIdx + 1;
     if (nextIdx < questions.length) {
       loadQuestionPrompt(nextIdx, questions[nextIdx]);
@@ -310,9 +427,10 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
 
   const submitSessionResults = async () => {
     try {
+      const token = localStorage.getItem('coach_jwt_token');
       const sessionPayload = {
         roleTarget: userProfile.role,
-        questions: questions,
+        questions: questions.map(q => q.question || q),
         answers: answersRef.current,
         wpmHistory: wpmHistoryRef.current,
         eyeContactHistory: eyeHistoryRef.current,
@@ -320,7 +438,7 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
         expression: confidence
       };
 
-      const token = localStorage.getItem('coach_jwt_token');
+      // 1. Submit session history
       const res = await fetch('/api/interview/submit', {
         method: 'POST',
         headers: { 
@@ -330,16 +448,27 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
         body: JSON.stringify(sessionPayload)
       });
       const data = await res.json();
-      
-      if (data.success) {
-        // Trigger report page load
-        onFinish();
-      } else {
-        throw new Error(data.error || 'Failed to submit report');
+      if (!data.success) {
+        throw new Error(data.error || 'Failed to submit session history');
       }
+
+      // 2. Generate final report
+      const reportRes = await fetch('/api/interview/report', {
+        method: 'POST',
+        headers: { 
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`
+        }
+      });
+      const reportData = await reportRes.json();
+      if (!reportData.success) {
+        throw new Error(reportData.message || 'Failed to generate final report');
+      }
+      
+      onFinish();
     } catch (e) {
       console.error(e);
-      alert('Error submitting report to database. Falling back to local state data.');
+      alert('Error saving session report: ' + e.message);
       onFinish();
     }
   };
@@ -373,112 +502,430 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
     }
   };
 
-  return (
-    <div className="page">
-      <div className="page-header flex-between">
-        <div>
-          <h1 className="page-title">AI Interview Room</h1>
-          <p className="page-desc">Maintain eye contact with the camera and limit vocal filler words.</p>
-        </div>
-        <button className="btn btn-secondary" onClick={handleExit}>
-          <i className="fa-solid fa-circle-stop text-error"></i> Exit Room
-        </button>
-      </div>
+  const formatTimer = (totalSeconds) => {
+    const mins = Math.floor(totalSeconds / 60);
+    const secs = totalSeconds % 60;
+    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
+  };
 
-      <div className="interview-grid">
-        {/* Webcam Frame */}
-        <div className="camera-container">
-          {videoStream && !coachSpeaking && (
-            <div className="face-metrics-overlay">
-              <div className={`metric-pill ${eyeContact > 75 ? 'success' : 'warning'}`}>
-                <i className="fa-solid fa-eye"></i>
-                <span>Eye Contact: {eyeContact > 75 ? 'Good' : 'Look Here'} ({eyeContact}%)</span>
-              </div>
-              <div className="metric-pill accent">
-                <i className="fa-solid fa-smile"></i>
-                <span>Confidence: {confidence}</span>
-              </div>
-            </div>
-          )}
+  const progressPercent = questions.length > 0 ? ((currentIdx + 1) / questions.length) * 100 : 0;
 
-          {/* Camera display */}
-          <video 
-            ref={videoRef} 
-            className={`webcam-feed ${!videoStream || coachSpeaking ? 'd-none' : ''}`}
-            autoPlay 
-            playsInline 
-            muted
-          ></video>
-          <canvas 
-            ref={canvasRef} 
-            className={`canvas-overlay ${!videoStream || coachSpeaking ? 'd-none' : ''}`}
-          ></canvas>
-
-          {/* Scanning Line overlay */}
-          {videoStream && !coachSpeaking && <div className="scan-line"></div>}
-
-          {/* Fallback Coach Speaker Avatar */}
-          {(!videoStream || coachSpeaking) && (
-            <div className="coach-avatar-feed">
-              {coachSpeaking && (
-                <>
-                  <div className="coach-speaking-wave"></div>
-                  <div className="coach-speaking-wave" style={{ animationDelay: '0.6s' }}></div>
-                  <div className="coach-speaking-wave" style={{ animationDelay: '1.2s' }}></div>
-                </>
-              )}
-              <div className="coach-avatar-container">
-                <i className="fa-solid fa-robot"></i>
-              </div>
-              <div className="coach-overlay-status">
-                <div className="dot-pulse"></div>
-                <span>{coachSpeaking ? 'AI Coach Speaking...' : 'Interviewer Ready'}</span>
-              </div>
-            </div>
-          )}
+  if (!isStarted) {
+    return (
+      <div className="page" style={{ maxWidth: '600px', margin: '0 auto', paddingBottom: '40px' }}>
+        <div className="page-header" style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <h1 className="page-title" style={{ fontSize: '32px', fontWeight: '800', fontFamily: 'Outfit' }}>Practice Room Setup</h1>
+          <p className="page-desc" style={{ color: '#64748b' }}>Configure your mock session parameters before activating camera and AI.</p>
         </div>
 
-        {/* Control Console */}
-        <div className="control-panel">
-          <div className="glass-card question-card">
-            <div>
-              <div className="question-number">Question {currentIdx + 1} of {questions.length}</div>
-              <h3 className="question-text">{questions[currentIdx] || 'Loading question prompt...'}</h3>
-            </div>
-
-            <div>
-              <div className="transcript-label">Live Answer Transcript:</div>
-              <div className="transcript-area">
-                {liveTranscript || (coachSpeaking ? 'Interviewer is speaking the question...' : 'Click "Start Answering" below and speak when ready...')}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '20px', marginBottom: '30px' }}>
+          {/* Option A: General Mode */}
+          <div 
+            onClick={() => setPracticeMode('general')}
+            className="glass-card" 
+            style={{ 
+              border: practiceMode === 'general' ? '2px solid #0b4fcd' : '1px solid #e2e8f0', 
+              borderRadius: '20px', 
+              padding: '24px', 
+              cursor: 'pointer',
+              background: '#ffffff',
+              transition: 'all 0.2s ease',
+              boxShadow: practiceMode === 'general' ? '0 8px 24px rgba(11, 79, 205, 0.12)' : 'none'
+            }}
+          >
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ 
+                width: '48px', 
+                height: '48px', 
+                borderRadius: '50%', 
+                background: '#eff6ff', 
+                color: '#0b4fcd', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                fontSize: '20px'
+              }}>
+                <i className="fa-solid fa-list-check"></i>
               </div>
+              <div style={{ flexGrow: 1 }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>General Practice Mode</h3>
+                <p style={{ fontSize: '13px', color: '#64748b', margin: 0, fontWeight: '500' }}>
+                  Standard HR, behavioral, and engineering design concepts mockup.
+                </p>
+              </div>
+              <div style={{ fontSize: '20px', color: practiceMode === 'general' ? '#0b4fcd' : '#e2e8f0' }}>
+                <i className={practiceMode === 'general' ? "fa-solid fa-circle-dot" : "fa-regular fa-circle"}></i>
+              </div>
+            </div>
+          </div>
 
-              <div className="flex-between">
-                <button 
-                  className={`btn ${isListening ? 'btn-secondary' : 'btn-primary'}`} 
-                  onClick={handleToggleListening}
-                  disabled={coachSpeaking}
-                >
-                  <i className={`fa-solid ${isListening ? 'fa-microphone-slash' : 'fa-microphone'}`}></i>
-                  {isListening ? 'Pause Answer' : 'Start Answering'}
-                </button>
-
-                {!coachSpeaking && (liveTranscript || isListening) && (
-                  <button className="btn btn-success" onClick={handleNextQuestion}>
-                    Submit Answer <i className="fa-solid fa-arrow-right"></i>
-                  </button>
+          {/* Option B: Resume Mode */}
+          <div 
+            onClick={() => {
+              if (activeResume) {
+                setPracticeMode('resume');
+              } else {
+                alert('Please upload a resume first to unlock Resume Mode.');
+              }
+            }}
+            className="glass-card" 
+            style={{ 
+              border: practiceMode === 'resume' ? '2px solid #0b4fcd' : '1px solid #e2e8f0', 
+              borderRadius: '20px', 
+              padding: '24px', 
+              cursor: activeResume ? 'pointer' : 'not-allowed',
+              opacity: activeResume ? 1 : 0.65,
+              background: '#ffffff',
+              transition: 'all 0.2s ease',
+              boxShadow: practiceMode === 'resume' ? '0 8px 24px rgba(11, 79, 205, 0.12)' : 'none'
+            }}
+          >
+            <div style={{ display: 'flex', gap: '16px', alignItems: 'center' }}>
+              <div style={{ 
+                width: '48px', 
+                height: '48px', 
+                borderRadius: '50%', 
+                background: '#ecfdf5', 
+                color: '#10b981', 
+                display: 'flex', 
+                alignItems: 'center', 
+                justifyContent: 'center',
+                fontSize: '20px'
+              }}>
+                <i className="fa-solid fa-file-invoice"></i>
+              </div>
+              <div style={{ flexGrow: 1 }}>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                  <h3 style={{ fontSize: '16px', fontWeight: '800', color: '#0f172a', marginBottom: '4px' }}>Resume-Tailored Mode</h3>
+                  {!activeResume && (
+                    <span className="badge" style={{ backgroundColor: '#fee2e2', color: '#dc2626', border: 'none', fontSize: '9px', fontWeight: '800', padding: '2px 6px', borderRadius: '8px' }}>LOCKED</span>
+                  )}
+                </div>
+                {activeResume ? (
+                  <p style={{ fontSize: '13px', color: '#64748b', margin: 0, fontWeight: '500' }}>
+                    Practice custom AI questions generated from your active CV (<strong>{activeResume.roleTarget}</strong>).
+                  </p>
+                ) : (
+                  <p style={{ fontSize: '13px', color: '#dc2626', margin: 0, fontWeight: '600' }}>
+                    No resume found. Upload a resume file to unlock custom technical question drills.
+                  </p>
                 )}
               </div>
+              <div style={{ fontSize: '20px', color: practiceMode === 'resume' ? '#0b4fcd' : '#e2e8f0' }}>
+                <i className={practiceMode === 'resume' ? "fa-solid fa-circle-dot" : "fa-regular fa-circle"}></i>
+              </div>
             </div>
           </div>
-
-          {/* Waveform Canvas widget */}
-          <AudioVisualizer audioStream={audioStream} isListening={isListening} />
-          
-          <div className="flex-between" style={{ fontSize: '11px', color: 'var(--text-muted)', padding: '0 10px' }}>
-            <span><i className="fa-solid fa-gauge"></i> Speed: {wpm} WPM</span>
-            <span><i className="fa-solid fa-triangle-exclamation"></i> Fillers: {fillerCount}</span>
-          </div>
         </div>
+
+        {/* Action Button & Navigation */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+          {practiceMode === 'resume' && !activeResume ? (
+            <button 
+              className="btn btn-primary"
+              onClick={() => switchPage('resume')}
+              style={{
+                height: '52px',
+                borderRadius: '16px',
+                fontSize: '15px',
+                fontWeight: '700',
+                background: '#0b4fcd',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              <i className="fa-solid fa-file-arrow-up"></i>
+              <span>Go to Resume Upload</span>
+            </button>
+          ) : (
+            <button 
+              className="btn btn-primary"
+              onClick={handleStartSession}
+              disabled={loading || fetchingResume}
+              style={{
+                height: '52px',
+                borderRadius: '16px',
+                fontSize: '15px',
+                fontWeight: '700',
+                background: '#0b4fcd',
+                color: '#ffffff',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '8px'
+              }}
+            >
+              {loading ? (
+                <>
+                  <i className="fa-solid fa-circle-notch fa-spin"></i>
+                  <span>Compiling Mock Curriculum...</span>
+                </>
+              ) : (
+                <>
+                  <i className="fa-solid fa-circle-play"></i>
+                  <span>Activate Camera & Start Mock</span>
+                </>
+              )}
+            </button>
+          )}
+
+          <button 
+            className="btn btn-secondary"
+            onClick={() => switchPage('dashboard')}
+            style={{
+              height: '50px',
+              borderRadius: '16px',
+              fontSize: '14.5px',
+              fontWeight: '700',
+              background: '#ffffff',
+              border: '1px solid #e2e8f0',
+              color: '#64748b'
+            }}
+          >
+            Cancel and Return
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="page" style={{ maxWidth: '600px', margin: '0 auto', paddingBottom: '30px' }}>
+      
+      {/* Top Header Row with LIVE and Timer */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span 
+            style={{ 
+              width: '8px', 
+              height: '8px', 
+              borderRadius: '50%', 
+              backgroundColor: '#dc2626', 
+              display: 'inline-block',
+              boxShadow: '0 0 8px #dc2626'
+            }} 
+          />
+          <span style={{ fontWeight: '800', color: '#dc2626', fontSize: '13px', letterSpacing: '0.5px' }}>LIVE</span>
+        </div>
+        <div>
+          <span style={{ fontSize: '28px', fontWeight: '800', color: '#0b4fcd', fontFamily: 'Outfit' }}>
+            {formatTimer(elapsedSeconds)}
+          </span>
+        </div>
+      </div>
+
+      {/* Progress Bar */}
+      <div style={{ width: '100%', height: '5px', backgroundColor: '#e2e8f0', borderRadius: '4px', overflow: 'hidden', marginBottom: '24px' }}>
+        <div 
+          style={{ 
+            width: `${progressPercent}%`, 
+            height: '100%', 
+            backgroundColor: '#0d9488', // Green progress track
+            transition: 'width 0.3s ease' 
+          }} 
+        />
+      </div>
+
+      {/* Question Container Card */}
+      <div className="glass-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', marginBottom: '20px' }}>
+        <div className="question-number" style={{ color: '#0b4fcd', fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+          Question {currentIdx + 1} of {questions.length}
+        </div>
+        <h2 style={{ fontSize: '24px', color: '#0f172a', fontWeight: '800', lineHeight: '1.4', marginTop: '10px', marginBottom: 0 }}>
+          {(questions[currentIdx]?.question || questions[currentIdx] || 'Loading question prompt...')}
+        </h2>
+      </div>
+
+      {/* Webcam Feed Video Frame */}
+      <div className="camera-container" style={{ height: '340px', position: 'relative', borderRadius: '24px', overflow: 'hidden', marginBottom: '30px' }}>
+        
+        {/* Webcam "HD Active" badge overlay inside feed */}
+        <div 
+          className="metric-pill" 
+          style={{ 
+            position: 'absolute', 
+            top: '16px', 
+            right: '16px', 
+            zIndex: 10,
+            background: 'rgba(255,255,255,0.9)',
+            border: 'none',
+            fontSize: '12px',
+            fontWeight: '700',
+            color: '#1e293b'
+          }}
+        >
+          <i className="fa-solid fa-video" style={{ color: '#64748b' }}></i>
+          <span>HD Active</span>
+        </div>
+
+        {/* Sound frequency Waveform overlay bottom left */}
+        <div 
+          style={{ 
+            position: 'absolute', 
+            bottom: '16px', 
+            left: '16px', 
+            width: '100px', 
+            height: '32px', 
+            zIndex: 10 
+          }}
+        >
+          <AudioVisualizer audioStream={audioStream} isListening={isListening} minimal={true} />
+        </div>
+
+        {/* Real-time Subtitles caption overlay when candidate is answering */}
+        {isListening && liveTranscript && (
+          <div 
+            style={{
+              position: 'absolute',
+              bottom: '16px',
+              right: '16px',
+              left: '130px', // Offset from audio wave on left
+              background: 'rgba(15, 23, 42, 0.75)',
+              color: '#ffffff',
+              padding: '6px 12px',
+              borderRadius: '10px',
+              fontSize: '13px',
+              fontWeight: '500',
+              backdropFilter: 'blur(4px)',
+              border: '1px solid rgba(255,255,255,0.1)',
+              maxHeight: '60px',
+              overflowY: 'auto'
+            }}
+          >
+            {liveTranscript}
+          </div>
+        )}
+
+        {/* Video feed display */}
+        <video 
+          ref={videoRef} 
+          className={`webcam-feed ${!videoStream || coachSpeaking ? 'd-none' : ''}`}
+          autoPlay 
+          playsInline 
+          muted
+          style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+        ></video>
+        <canvas 
+          ref={canvasRef} 
+          className={`canvas-overlay ${!videoStream || coachSpeaking ? 'd-none' : ''}`}
+        ></canvas>
+
+        {/* Scanning grid lines */}
+        {videoStream && !coachSpeaking && <div className="scan-line"></div>}
+
+        {/* Fallback Coach Speaker Avatar when AI is speaking */}
+        {(!videoStream || coachSpeaking) && (
+          <div className="coach-avatar-feed" style={{ height: '100%' }}>
+            {coachSpeaking && (
+              <>
+                <div className="coach-speaking-wave"></div>
+                <div className="coach-speaking-wave" style={{ animationDelay: '0.6s' }}></div>
+                <div className="coach-speaking-wave" style={{ animationDelay: '1.2s' }}></div>
+              </>
+            )}
+            <div className="coach-avatar-container">
+              <i className="fa-solid fa-robot"></i>
+            </div>
+            <div className="coach-overlay-status" style={{ padding: '6px 12px', fontSize: '12px' }}>
+              <div className="dot-pulse"></div>
+              <span>{coachSpeaking ? 'AI Recruiter speaking...' : 'Interviewer Ready'}</span>
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Control Console buttons */}
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+        
+        {/* Mid Row Controls: Pause and Next Question */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', width: '100%' }}>
+          
+          {/* Pause Circle Button */}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '6px' }}>
+            <button
+              onClick={handleToggleListening}
+              disabled={coachSpeaking}
+              style={{
+                width: '54px',
+                height: '54px',
+                borderRadius: '50%',
+                backgroundColor: isListening ? '#0b4fcd' : '#e2e8f0',
+                border: 'none',
+                color: isListening ? '#ffffff' : '#64748b',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '18px',
+                cursor: 'pointer',
+                boxShadow: isListening ? '0 4px 12px rgba(11, 79, 205, 0.25)' : 'none',
+                transition: 'all 0.2s ease'
+              }}
+            >
+              <i className={`fa-solid ${isListening ? 'fa-pause' : 'fa-microphone'}`}></i>
+            </button>
+            <span style={{ fontSize: '12px', color: '#64748b', fontWeight: '700' }}>
+              {isListening ? 'Pause' : 'Start Answer'}
+            </span>
+          </div>
+
+          {/* Next Question Pill button */}
+          <button
+            onClick={handleNextQuestion}
+            disabled={coachSpeaking || (!liveTranscript && !isListening)}
+            style={{
+              height: '54px',
+              borderRadius: '16px',
+              padding: '0 24px',
+              backgroundColor: '#eff6ff',
+              border: 'none',
+              color: '#0b4fcd',
+              fontSize: '14.5px',
+              fontWeight: '700',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              cursor: 'pointer',
+              opacity: coachSpeaking || (!liveTranscript && !isListening) ? 0.5 : 1,
+              transition: 'all 0.2s ease'
+            }}
+          >
+            <span>Next Question</span>
+            <i className="fa-solid fa-arrow-right"></i>
+          </button>
+        </div>
+
+        {/* End Session full-width button */}
+        <button
+          onClick={handleExit}
+          style={{
+            width: '100%',
+            height: '48px',
+            borderRadius: '12px',
+            backgroundColor: '#ffffff',
+            border: '1px solid #e2e8f0',
+            color: '#334155',
+            fontSize: '14px',
+            fontWeight: '700',
+            cursor: 'pointer',
+            transition: 'all 0.2s ease'
+          }}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.backgroundColor = '#fee2e2';
+            e.currentTarget.style.color = '#dc2626';
+            e.currentTarget.style.borderColor = '#fca5a5';
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.backgroundColor = '#ffffff';
+            e.currentTarget.style.color = '#334155';
+            e.currentTarget.style.borderColor = '#e2e8f0';
+          }}
+        >
+          End Session
+        </button>
+
       </div>
     </div>
   );

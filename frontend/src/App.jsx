@@ -4,25 +4,35 @@ import Dashboard from './pages/Dashboard';
 import ResumeUpload from './pages/ResumeUpload';
 import InterviewRoom from './pages/InterviewRoom';
 import FeedbackReport from './pages/FeedbackReport';
+import QuestionLibrary from './pages/QuestionLibrary';
+import AdminDashboard from './pages/AdminDashboard';
+import LandingPage from './pages/LandingPage';
+import InterviewSetup from './pages/InterviewSetup';
 import Login from './pages/Login';
 import Register from './pages/Register';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('coach_jwt_token'));
-  const [authView, setAuthView] = useState('login'); // 'login' or 'register'
+  const [authView, setAuthView] = useState('landing'); // 'landing' or 'login' or 'register'
   
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [userProfile, setUserProfile] = useState({
-    name: localStorage.getItem('coach_user_name') || 'Candidate',
-    role: localStorage.getItem('coach_user_role') || 'Software Engineer',
-    skills: ['React.js', 'JavaScript', 'CSS Grid'],
-    experience: '2 Years',
+    name: localStorage.getItem('coach_user_name') || 'Sarah',
+    role: localStorage.getItem('coach_user_role') || 'Senior Product Designer',
+    userRole: localStorage.getItem('coach_user_system_role') || 'candidate',
+    skills: ['React.js', 'JavaScript', 'CSS Grid', 'System Design'],
+    experience: '5 Years',
     questions: []
   });
   
   const [selectedReportId, setSelectedReportId] = useState(null);
   const [sessionHistory, setSessionHistory] = useState([]);
   const [dbStatus, setDbStatus] = useState({ databaseConnected: false, storageMode: 'Checking...' });
+
+  // Default avatar image that matches the screenshots
+  const avatarUrl = userProfile.name === 'Sarah'
+    ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200' // Sarah
+    : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'; // Default Male
 
   // Load profile and history when token changes
   useEffect(() => {
@@ -51,10 +61,14 @@ export default function App() {
       })
       .then(data => {
         if (data && data.name) {
+          if (data.userRole) {
+            localStorage.setItem('coach_user_system_role', data.userRole);
+          }
           setUserProfile(prev => ({
             ...prev,
             name: data.name,
             role: data.role || prev.role,
+            userRole: data.userRole || prev.userRole || 'candidate',
             skills: data.skills && data.skills.length > 0 ? data.skills : prev.skills,
             experience: data.experience || prev.experience,
             questions: data.questions && data.questions.length > 0 ? data.questions : prev.questions
@@ -81,10 +95,12 @@ export default function App() {
 
   const handleLoginSuccess = (user, jwtToken) => {
     setToken(jwtToken);
+    localStorage.setItem('coach_user_system_role', user.role || 'candidate');
     setUserProfile(prev => ({
       ...prev,
       name: user.name,
-      role: localStorage.getItem('coach_user_role') || 'Software Engineer'
+      role: user.role === 'candidate' ? 'Candidate Profile' : 'Internal Management',
+      userRole: user.role || 'candidate'
     }));
     setCurrentPage('dashboard');
   };
@@ -93,6 +109,7 @@ export default function App() {
     localStorage.removeItem('coach_jwt_token');
     localStorage.removeItem('coach_user_name');
     localStorage.removeItem('coach_user_email');
+    localStorage.removeItem('coach_user_system_role');
     setToken(null);
     setAuthView('login');
     setCurrentPage('dashboard');
@@ -107,12 +124,11 @@ export default function App() {
   };
 
   const handleStartDirectInterview = () => {
-    const defaultQuestions = [
-      "Could you start by introducing yourself and walking me through your background and key strengths?",
-      "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
-      "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
-    ];
-    setUserProfile(prev => ({ ...prev, questions: defaultQuestions }));
+    setCurrentPage('setup');
+  };
+
+  const handleStartInterviewWithQuestions = (questionsList) => {
+    setUserProfile(prev => ({ ...prev, questions: questionsList }));
     setCurrentPage('interview');
   };
 
@@ -122,12 +138,28 @@ export default function App() {
   };
 
   if (!token) {
+    if (authView === 'landing') {
+      return (
+        <LandingPage 
+          switchToLogin={() => setAuthView('login')} 
+          switchToRegister={() => setAuthView('register')} 
+        />
+      );
+    }
     return (
       <>
         <div className="glow-orb orb-1"></div>
         <div className="glow-orb orb-2"></div>
-        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px' }}>
-          <div style={{ background: 'rgba(255,255,255,0.02)', padding: '10px 20px', borderRadius: '20px', border: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '30px', display: 'flex', gap: '15px' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px', background: '#f5f7fb' }}>
+          
+          <button 
+            onClick={() => setAuthView('landing')}
+            style={{ position: 'absolute', top: '20px', left: '20px', background: '#ffffff', border: '1px solid var(--border-color)', padding: '8px 16px', borderRadius: '12px', cursor: 'pointer', fontSize: '13.5px', fontWeight: '700', display: 'flex', alignItems: 'center', gap: '8px' }}
+          >
+            <i className="fa-solid fa-arrow-left"></i> Back to Homepage
+          </button>
+
+          <div style={{ background: 'rgba(255,255,255,0.8)', padding: '10px 20px', borderRadius: '20px', border: '1px solid var(--border-color)', fontSize: '13px', color: 'var(--text-muted)', marginBottom: '30px', display: 'flex', gap: '15px', boxShadow: '0 4px 12px rgba(0,0,0,0.02)' }}>
             <div>
               DB Status:{' '}
               <span style={{ color: dbStatus.databaseConnected ? 'var(--success)' : 'var(--warning)', fontWeight: 'bold' }}>
@@ -136,7 +168,7 @@ export default function App() {
             </div>
             <span>|</span>
             <div>
-              Storage: <span style={{ color: 'white', fontWeight: 'bold' }}>{dbStatus.storageMode || 'Checking...'}</span>
+              Storage: <span style={{ color: 'var(--text-main)', fontWeight: 'bold' }}>{dbStatus.storageMode || 'Checking...'}</span>
             </div>
           </div>
           {authView === 'login' ? (
@@ -155,13 +187,48 @@ export default function App() {
     );
   }
 
+  if (currentPage === 'admin') {
+    return (
+      <AdminDashboard 
+        userProfile={userProfile}
+        onExitAdmin={() => setCurrentPage('dashboard')}
+      />
+    );
+  }
+
   return (
     <>
       <div className="glow-orb orb-1"></div>
       <div className="glow-orb orb-2"></div>
 
+      {/* Mobile Sticky Header */}
+      <header className="app-header">
+        <div className="app-header-logo" onClick={() => handlePageSwitch('dashboard')}>
+          <div className="app-header-logo-icon">
+            <i className="fa-solid fa-bars" style={{ fontSize: '18px', marginRight: '8px', color: '#64748b' }}></i>
+          </div>
+          <span className="app-header-logo-text">PrepFlow</span>
+        </div>
+        <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+          <button 
+            onClick={() => handlePageSwitch('resume')}
+            style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+            title="Upload Resume / Setup"
+          >
+            <i className="fa-solid fa-file-arrow-up"></i>
+          </button>
+          <img 
+            className="avatar-img" 
+            src={avatarUrl} 
+            alt="Sarah profile" 
+            onClick={() => handlePageSwitch('resume')}
+            style={{ cursor: 'pointer' }}
+          />
+        </div>
+      </header>
+
       <div className="app-container">
-        {/* Sidebar Left */}
+        {/* Sidebar Left for Desktop viewports */}
         <Sidebar 
           currentPage={currentPage} 
           switchPage={handlePageSwitch} 
@@ -181,6 +248,13 @@ export default function App() {
             />
           )}
 
+          {currentPage === 'library' && (
+            <QuestionLibrary 
+              userProfile={userProfile}
+              startInterviewWithQuestions={handleStartInterviewWithQuestions}
+            />
+          )}
+
           {currentPage === 'resume' && (
             <ResumeUpload 
               userProfile={userProfile}
@@ -195,7 +269,7 @@ export default function App() {
               switchPage={handlePageSwitch}
               onFinish={() => {
                 if (token) fetchHistory(token);
-                setSelectedReportId('latest'); // Tell report component to fetch the newly completed session
+                setSelectedReportId('latest'); // Load latest session report
                 setCurrentPage('report');
               }}
             />
@@ -208,7 +282,53 @@ export default function App() {
               switchPage={handlePageSwitch}
             />
           )}
+
+          {currentPage === 'setup' && (
+            <InterviewSetup 
+              userProfile={userProfile}
+              onStartInterview={handleStartInterviewWithQuestions}
+              switchPage={handlePageSwitch}
+            />
+          )}
+
+          {currentPage === 'admin' && (
+            <AdminDashboard 
+              userProfile={userProfile}
+            />
+          )}
         </main>
+
+        {/* Bottom Navigation for Mobile viewports */}
+        <nav className="bottom-nav">
+          <a 
+            className={`bottom-nav-item ${currentPage === 'dashboard' ? 'active' : ''}`}
+            onClick={() => handlePageSwitch('dashboard')}
+          >
+            <i className="fa-solid fa-table-cells-large"></i>
+            <span>Dashboard</span>
+          </a>
+          <a 
+            className={`bottom-nav-item ${currentPage === 'library' ? 'active' : ''}`}
+            onClick={() => handlePageSwitch('library')}
+          >
+            <i className="fa-solid fa-book-open"></i>
+            <span>Library</span>
+          </a>
+          <a 
+            className={`bottom-nav-item ${currentPage === 'resume' || currentPage === 'interview' ? 'active' : ''}`}
+            onClick={() => handlePageSwitch('resume')}
+          >
+            <i className="fa-solid fa-circle-play"></i>
+            <span>Practice</span>
+          </a>
+          <a 
+            className={`bottom-nav-item ${currentPage === 'report' ? 'active' : ''}`}
+            onClick={() => handlePageSwitch('report')}
+          >
+            <i className="fa-solid fa-square-poll-vertical"></i>
+            <span>Reports</span>
+          </a>
+        </nav>
       </div>
     </>
   );

@@ -1,11 +1,15 @@
 const { getPool, getDBStatus } = require('../config/db');
 
 let memoryUsers = [
-  { id: 1, name: 'Jane Doe', email: 'jane@example.com', password: 'SecurePassword123', photo_url: null, skills: ['React', 'Node', 'SQL'] }
+  { id: 1, name: 'Super Admin', email: 'superadmin@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Management', 'Strategy'], role: 'super_admin' },
+  { id: 2, name: 'Admin User', email: 'admin@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Coordination'], role: 'admin' },
+  { id: 3, name: 'Content Manager', email: 'content@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Writing'], role: 'content_manager' },
+  { id: 4, name: 'Jane Doe', email: 'jane@example.com', password: 'SecurePassword123', photo_url: null, skills: ['React', 'Node', 'SQL'], role: 'candidate' }
 ];
 
 class User {
   static getMemoryUsers() { return memoryUsers; }
+  static setMemoryUsers(newUsers) { memoryUsers = newUsers; }
 
   static async findByEmail(email) {
     if (getDBStatus()) {
@@ -25,16 +29,16 @@ class User {
     }
   }
 
-  static async create({ name, email, password }) {
+  static async create({ name, email, password, role = 'candidate' }) {
     if (getDBStatus()) {
       const [result] = await getPool().query(
-        'INSERT INTO users (name, email, password) VALUES (?, ?, ?)',
-        [name, email, password]
+        'INSERT INTO users (name, email, password, role) VALUES (?, ?, ?, ?)',
+        [name, email, password, role]
       );
       return result.insertId;
     } else {
       const id = memoryUsers.length + 1;
-      memoryUsers.push({ id, name, email, password, photo_url: null, skills: null });
+      memoryUsers.push({ id, name, email, password, photo_url: null, skills: null, role });
       return id;
     }
   }
