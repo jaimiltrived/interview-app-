@@ -26,6 +26,16 @@ class Resume {
     }
   }
 
+  static async latestByUserId(userId) {
+    if (getDBStatus()) {
+      const [rows] = await getPool().query('SELECT * FROM resumes WHERE user_id = ? ORDER BY id DESC LIMIT 1', [userId]);
+      return rows[0] || null;
+    } else {
+      const userResumes = memoryResumes.filter(r => String(r.userId) === String(userId));
+      return userResumes.length > 0 ? userResumes[userResumes.length - 1] : null;
+    }
+  }
+
   static async listByCandidate(candidateName) {
     if (getDBStatus()) {
       const [rows] = await getPool().query('SELECT * FROM resumes WHERE name = ? ORDER BY id DESC', [candidateName]);

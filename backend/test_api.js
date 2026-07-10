@@ -80,13 +80,17 @@ async function runTests() {
 
     // 4. Resume Module
     console.log('\n--- Testing Resume Module ---');
+    const resumeFormData = new FormData();
+    const fileBlob = new Blob(['Experienced Frontend Developer. Skills: React, JavaScript, HTML5, CSS3. Target role: React Developer.'], { type: 'text/plain' });
+    resumeFormData.append('file', fileBlob, 'resume.txt');
+    resumeFormData.append('candidateName', 'John Test Account');
+
     const uploadRes = await fetch(`${BASE_URL}/resume/upload`, {
       method: 'POST',
-      headers: authHeaders,
-      body: JSON.stringify({
-        fileName: 'resume.txt',
-        fileContent: 'Experienced Frontend Developer. Skills: React, JavaScript, HTML5, CSS3. Target role: React Developer.'
-      })
+      headers: {
+        'Authorization': `Bearer ${token}`
+      },
+      body: resumeFormData
     });
     const uploadData = await assertResponse('POST /resume/upload', uploadRes, 200);
 

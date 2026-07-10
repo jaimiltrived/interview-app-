@@ -353,9 +353,8 @@ router.get('/profile', authMiddleware, async (req, res) => {
 
     // Lookup latest resume for the user to enrich profile questions and target role
     try {
-      const resumes = await Resume.listByCandidate(user.name);
-      if (resumes && resumes.length > 0) {
-        const latestResume = resumes[0];
+      const latestResume = await Resume.latestByUserId(userId);
+      if (latestResume) {
         roleTarget = latestResume.role_target || roleTarget;
         experience = latestResume.experience || experience;
         
@@ -540,13 +539,13 @@ router.delete('/profile/delete-account', async (req, res) => {
 
 router.get('/resume/list', authMiddleware, async (req, res) => {
   try {
-    const candidateName = req.user.name;
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const list = await queryDB('SELECT * FROM resumes WHERE name = ? ORDER BY id DESC', [candidateName]);
-      res.json(list.map(r => ({ ...r, skills: r.skills ? r.skills.split(',') : [] })));
+      const list = await queryDB('SELECT * FROM resumes WHERE user_id = ? ORDER BY id DESC', [userId]);
+      res.json(list.map(r => ({ ...r, skills: typeof r.skills === 'string' ? JSON.parse(r.skills) : (r.skills || []) })));
     } else {
-      const list = memoryResumes.filter(r => r.name === candidateName);
-      res.json(list.map(r => ({ ...r, skills: r.skills ? r.skills.split(',') : [] })));
+      const list = Resume.getMemoryResumes().filter(r => String(r.userId) === String(userId));
+      res.json(list.map(r => ({ ...r, skills: r.skills || [] })));
     }
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -556,15 +555,15 @@ router.get('/resume/list', authMiddleware, async (req, res) => {
 router.get('/resume/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
-    const candidateName = req.user.name;
+    const userId = req.user.id;
     if (getDBStatus()) {
-      const rows = await queryDB('SELECT * FROM resumes WHERE id = ? AND name = ?', [id, candidateName]);
+      const rows = await queryDB('SELECT * FROM resumes WHERE id = ? AND user_id = ?', [id, userId]);
       if (rows.length === 0) return res.status(404).json({ error: 'Resume not found or access denied' });
-      res.json({ ...rows[0], skills: rows[0].skills ? rows[0].skills.split(',') : [] });
+      res.json({ ...rows[0], skills: typeof rows[0].skills === 'string' ? JSON.parse(rows[0].skills) : (rows[0].skills || []) });
     } else {
-      const resu = memoryResumes.find(r => String(r.id) === String(id) && r.name === candidateName);
+      const resu = Resume.getMemoryResumes().find(r => String(r.id) === String(id) && String(r.userId) === String(userId));
       if (!resu) return res.status(404).json({ error: 'Resume not found or access denied in memory' });
-      res.json({ ...resu, skills: resu.skills ? resu.skills.split(',') : [] });
+      res.json({ ...resu, skills: resu.skills || [] });
     }
   } catch (error) {
     res.status(500).json({ error: error.message });
@@ -891,14 +890,13 @@ router.post('/ai/generate-question', authMiddleware, async (req, res) => {
       }
 
       try {
-        const latestResume = await Resume.listByCandidate(user.name);
-        if (latestResume && latestResume.length > 0) {
-          const r = latestResume[0];
-          inferredRole = r.role_target || inferredRole;
-          experience = r.experience || experience;
-          if (r.skills) {
+        const latestResume = await Resume.latestByUserId(req.user.id);
+        if (latestResume) {
+          inferredRole = latestResume.role_target || inferredRole;
+          experience = latestResume.experience || experience;
+          if (latestResume.skills) {
             try {
-              const rSkills = typeof r.skills === 'string' ? JSON.parse(r.skills) : r.skills;
+              const rSkills = typeof latestResume.skills === 'string' ? JSON.parse(latestResume.skills) : latestResume.skills;
               if (Array.isArray(rSkills)) skills = rSkills.join(', ');
             } catch (e) {}
           }

@@ -3,8 +3,9 @@ const { getPool, getDBStatus } = require('../config/db');
 let memoryUsers = [
   { id: 1, name: 'Super Admin', email: 'superadmin@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Management', 'Strategy'], role: 'super_admin' },
   { id: 2, name: 'Admin User', email: 'admin@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Coordination'], role: 'admin' },
-  { id: 3, name: 'Content Manager', email: 'content@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Writing'], role: 'content_manager' },
-  { id: 4, name: 'Jane Doe', email: 'jane@example.com', password: 'SecurePassword123', photo_url: null, skills: ['React', 'Node', 'SQL'], role: 'candidate' }
+  { id: 3, name: 'SmartLearning Admin', email: 'admin@smartlearning.com', password: 'Password123', photo_url: null, skills: ['SmartLearning'], role: 'admin' },
+  { id: 4, name: 'Content Manager', email: 'content@prepcoach.ai', password: 'Password123', photo_url: null, skills: ['Writing'], role: 'content_manager' },
+  { id: 5, name: 'Jane Doe', email: 'jane@example.com', password: 'SecurePassword123', photo_url: null, skills: ['React', 'Node', 'SQL'], role: 'candidate' }
 ];
 
 class User {

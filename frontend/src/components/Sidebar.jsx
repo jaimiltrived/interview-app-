@@ -71,8 +71,13 @@ export default function Sidebar({ currentPage, switchPage, userProfile, onLogout
         )}
       </nav>
 
-      <div className="user-profile" onClick={() => switchPage('resume')} style={{ cursor: 'pointer' }} title="Resume Upload / Setup">
-        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+      <div 
+        className={`user-profile ${currentPage === 'profile' ? 'active-profile' : ''}`} 
+        onClick={() => switchPage('profile')} 
+        style={{ cursor: 'pointer', padding: currentPage === 'profile' ? '12px' : '20px 8px 8px 8px', borderRadius: '12px', background: currentPage === 'profile' ? 'rgba(0, 0, 0, 0.05)' : 'none', transition: 'all 0.2s ease' }} 
+        title="User Profile & Settings"
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden', flexGrow: 1 }}>
           {avatarUrl ? (
             <img 
               src={avatarUrl} 
@@ -88,7 +93,10 @@ export default function Sidebar({ currentPage, switchPage, userProfile, onLogout
           </div>
         </div>
         <button 
-          onClick={onLogout} 
+          onClick={(e) => {
+            e.stopPropagation(); // Prevent navigating to profile on logout click
+            onLogout();
+          }} 
           style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: '16px', padding: '6px', borderRadius: '6px', transition: 'all 0.2s', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
           title="Sign Out"
           onMouseEnter={(e) => e.currentTarget.style.color = 'var(--error)'}

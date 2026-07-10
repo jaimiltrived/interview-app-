@@ -7,6 +7,7 @@ import FeedbackReport from './pages/FeedbackReport';
 import QuestionLibrary from './pages/QuestionLibrary';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
+import Profile from './pages/Profile';
 import InterviewSetup from './pages/InterviewSetup';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -123,8 +124,21 @@ export default function App() {
     setCurrentPage(pageId);
   };
 
-  const handleStartDirectInterview = () => {
-    setCurrentPage('setup');
+  const handleStartDirectInterview = async () => {
+    try {
+      const res = await fetch('/api/resume/latest', {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+      const data = await res.json();
+      if (data.success && data.resume) {
+        setCurrentPage('setup');
+      } else {
+        alert('Please upload a resume first to customize technical mock questions matching your experience level!');
+        setCurrentPage('resume');
+      }
+    } catch (err) {
+      setCurrentPage('resume');
+    }
   };
 
   const handleStartInterviewWithQuestions = (questionsList) => {
@@ -294,6 +308,14 @@ export default function App() {
           {currentPage === 'admin' && (
             <AdminDashboard 
               userProfile={userProfile}
+            />
+          )}
+
+          {currentPage === 'profile' && (
+            <Profile 
+              userProfile={userProfile}
+              setUserProfile={setUserProfile}
+              onLogout={handleLogout}
             />
           )}
         </main>

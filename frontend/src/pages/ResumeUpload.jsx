@@ -7,7 +7,7 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
   const [progress, setProgress] = useState(0);
   const [statusText, setStatusText] = useState('Initializing AI Resume Parser...');
   const [parsedData, setParsedData] = useState(null);
-  const [hasConfirmedResume, setHasConfirmedResume] = useState(false);
+  const [hasConfirmedResume, setHasConfirmedResume] = useState(true);
 
   // Fetch the user's active resume on mount to support one-time setup
   useEffect(() => {
@@ -25,7 +25,7 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
         const data = await res.json();
         if (data.success && data.resume) {
           setParsedData(data.resume);
-          setHasConfirmedResume(false); // Show the confirmation screen first
+          setHasConfirmedResume(true); // Directly display the profile
         }
       } catch (err) {
         console.warn('Failed to load active resume profile:', err);

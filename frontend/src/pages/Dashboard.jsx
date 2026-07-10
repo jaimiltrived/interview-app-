@@ -85,7 +85,7 @@ export default function Dashboard({
         {/* Next Session Action Pill */}
         <button 
           className="btn btn-primary" 
-          onClick={startDirectInterview}
+          onClick={() => switchPage('resume')}
           style={{
             borderRadius: '40px',
             padding: '12px 24px',

@@ -367,6 +367,7 @@ const connectDB = async () => {
     };
     await seedAdmin('Super Admin', 'superadmin@prepcoach.ai', 'Password123', 'super_admin');
     await seedAdmin('Admin User', 'admin@prepcoach.ai', 'Password123', 'admin');
+    await seedAdmin('SmartLearning Admin', 'admin@smartlearning.com', 'Password123', 'admin');
     await seedAdmin('Content Manager', 'content@prepcoach.ai', 'Password123', 'content_manager');
     await seedAdmin('Jane Doe', 'jane@example.com', 'SecurePassword123', 'candidate');
 
