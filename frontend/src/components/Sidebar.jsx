@@ -11,9 +11,9 @@ export default function Sidebar({ currentPage, switchPage, userProfile, onLogout
         .slice(0, 2)
     : 'SR';
 
-  const avatarUrl = userProfile.name === 'Sarah'
-    ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200'
-    : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200';
+  const avatarUrl = userProfile.photoUrl 
+    ? userProfile.photoUrl 
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name || 'User')}&background=0D8ABC&color=fff`;
 
   return (
     <aside className="sidebar">
@@ -31,6 +31,13 @@ export default function Sidebar({ currentPage, switchPage, userProfile, onLogout
         >
           <i className="fa-solid fa-table-cells-large"></i>
           <span>Dashboard</span>
+        </a>
+        <a 
+          className={`menu-item ${currentPage === 'activity' ? 'active' : ''}`}
+          onClick={() => switchPage('activity')}
+        >
+          <i className="fa-solid fa-fire"></i>
+          <span>Activity & Streaks</span>
         </a>
         <a 
           className={`menu-item ${currentPage === 'library' ? 'active' : ''}`}
@@ -60,7 +67,7 @@ export default function Sidebar({ currentPage, switchPage, userProfile, onLogout
           <i className="fa-solid fa-square-poll-vertical"></i>
           <span>Feedback Reports</span>
         </a>
-        {['super_admin', 'admin', 'content_manager'].includes(userProfile.userRole) && (
+        {['super_admin'].includes(userProfile.userRole) && (
           <a 
             className={`menu-item ${currentPage === 'admin' ? 'active' : ''}`}
             onClick={() => switchPage('admin')}

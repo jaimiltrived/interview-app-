@@ -181,42 +181,42 @@ const connectDB = async () => {
     try {
       await connection.query("ALTER TABLE users ADD COLUMN role VARCHAR(50) DEFAULT 'candidate' AFTER email");
       console.log('[MIGRATION] Added role column to users.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE sessions ADD COLUMN user_id INT NULL AFTER id');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE resumes ADD COLUMN user_id INT NULL AFTER id');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     // Add resume_text and parsed_json to resumes table
     try {
       await connection.query('ALTER TABLE resumes ADD COLUMN resume_text LONGTEXT NULL AFTER name');
       console.log('[MIGRATION] Added resume_text column to resumes.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE resumes ADD COLUMN parsed_json JSON NULL AFTER resume_text');
       console.log('[MIGRATION] Added parsed_json column to resumes.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     // Convert columns to JSON if they are currently TEXT
     try {
       await connection.query('ALTER TABLE users MODIFY COLUMN skills JSON NULL');
       console.log('[MIGRATION] Converted users.skills to JSON.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE resumes MODIFY COLUMN skills JSON NULL');
       console.log('[MIGRATION] Converted resumes.skills to JSON.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE resumes ADD COLUMN questions JSON NULL AFTER skills');
       console.log('[MIGRATION] Added questions column to resumes.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE sessions MODIFY COLUMN questions JSON NULL');
@@ -225,27 +225,27 @@ const connectDB = async () => {
       await connection.query('ALTER TABLE sessions MODIFY COLUMN eye_contact_history JSON NULL');
       await connection.query('ALTER TABLE sessions MODIFY COLUMN filler_history JSON NULL');
       console.log('[MIGRATION] Converted sessions metric columns to JSON.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE sessions ADD CONSTRAINT fk_sessions_users FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE');
       console.log('[MIGRATION] Checked foreign key fk_sessions_users.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('ALTER TABLE resumes ADD CONSTRAINT fk_resumes_users FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE');
       console.log('[MIGRATION] Checked foreign key fk_resumes_users.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('CREATE INDEX idx_sessions_user_role ON sessions(user_id, role_target)');
       console.log('[MIGRATION] Created composite index idx_sessions_user_role.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     try {
       await connection.query('CREATE INDEX idx_resumes_user_role ON resumes(user_id, role_target)');
       console.log('[MIGRATION] Created composite index idx_resumes_user_role.');
-    } catch (e) {}
+    } catch(e) { console.warn('[MIGRATION WARNING]', e.message); }
 
     // --- Admin Tables Creation ---
     await connection.query(`
@@ -365,10 +365,11 @@ const connectDB = async () => {
         console.log(`Seeded default account: ${email} (${role})`);
       }
     };
-    await seedAdmin('Super Admin', 'superadmin@prepcoach.ai', 'Password123', 'super_admin');
-    await seedAdmin('Admin User', 'admin@prepcoach.ai', 'Password123', 'admin');
-    await seedAdmin('SmartLearning Admin', 'admin@smartlearning.com', 'Password123', 'admin');
-    await seedAdmin('Content Manager', 'content@prepcoach.ai', 'Password123', 'content_manager');
+    const defaultPassword = process.env.ADMIN_PASSWORD || 'Password123';
+    await seedAdmin('Super Admin', 'superadmin@prepcoach.ai', defaultPassword, 'super_admin');
+    await seedAdmin('Admin User', 'admin@prepcoach.ai', defaultPassword, 'admin');
+    await seedAdmin('SmartLearning Admin', process.env.ADMIN_EMAIL || 'admin@smartlearning.com', defaultPassword, 'admin');
+    await seedAdmin('Content Manager', 'content@prepcoach.ai', defaultPassword, 'content_manager');
     await seedAdmin('Jane Doe', 'jane@example.com', 'SecurePassword123', 'candidate');
 
     // Seed job_roles if empty

@@ -18,38 +18,7 @@ const questionService = require('../services/questionService');
 const evaluationService = require('../services/evaluationService');
 const feedbackService = require('../services/feedbackService');
 
-// --- Google Gemini AI API Helper ---
-const callGemini = async (prompt, fallbackText) => {
-  const apiKey = process.env.GEMINI_API_KEY;
-  if (!apiKey) {
-    console.log('[GEMINI] API key not found. Using local fallback.');
-    return fallbackText;
-  }
-
-  try {
-    const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
-      {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
-        })
-      }
-    );
-
-    if (!response.ok) {
-      throw new Error(`Gemini API returned status ${response.status}`);
-    }
-
-    const data = await response.json();
-    const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
-    if (result) return result.trim();
-  } catch (err) {
-    console.error('[GEMINI ERROR]', err.message);
-  }
-  return fallbackText;
-};
+// (callGemini duplicate removed; uses ollamaService fallback instead)
 
 // --- In-Memory State Mocks (Fallback if MySQL is offline) ---
 let memorySessions = [];
@@ -212,16 +181,17 @@ router.post('/auth/login', validateLogin, async (req, res) => {
       return res.status(401).json({ error: 'Invalid email or password credentials' });
     }
 
+    if (!process.env.JWT_SECRET) throw new Error('Server configuration error: JWT_SECRET missing.');
     const token = jwt.sign(
       { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role || 'candidate' },
-      process.env.JWT_SECRET || 'fallback_secret_key',
+      process.env.JWT_SECRET,
       { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
 
     res.json({
       success: true,
       token,
-      user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role || 'candidate' }
+      user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role || 'candidate' || "admin"}
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1191,12 +1161,13 @@ router.post('/admin/login', async (req, res) => {
     if (!isMatch) {
       return res.status(401).json({ error: 'Invalid admin credentials' });
     }
+    if (!process.env.JWT_SECRET) throw new Error('Server configuration error: JWT_SECRET missing.');
     const token = jwt.sign(
       { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role },
-      process.env.JWT_SECRET || 'fallback_secret_key',
-      { expiresIn: '7d' }
+      process.env.JWT_SECRET,
+      { expiresIn: process.env.JWT_EXPIRES_IN || '7d' }
     );
-    res.json({ success: true, token, user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role } });
+    res.json({ success: true, token, user: { id: userRecord.id, name: userRecord.name, email: userRecord.email, role: userRecord.role} });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

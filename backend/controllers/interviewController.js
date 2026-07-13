@@ -1,6 +1,7 @@
 const questionService = require('../services/questionService');
 const evaluationService = require('../services/evaluationService');
 const feedbackService = require('../services/feedbackService');
+const reportService = require('../services/reportService');
 const { generateResponse, cleanAndParseJSON } = require('../services/ollamaService');
 
 const InterviewQuestion = require('../models/InterviewQuestion');
@@ -31,6 +32,46 @@ const generateQuestions = async (req, res) => {
     });
   } catch (error) {
     res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * Adaptive AI-first question generation endpoint (one question at a time)
+ */
+const getNextQuestion = async (req, res) => {
+  try {
+    const {
+      stepIndex = 0,
+      roleTarget = 'Software Engineer',
+      skills = [],
+      projects = [],
+      previousQuestion = '',
+      previousAnswer = '',
+      previousEvaluation = null
+    } = req.body;
+
+    const nextQuestion = await questionService.generateNextQuestion({
+      stepIndex,
+      roleTarget,
+      skills,
+      projects,
+      previousQuestion,
+      previousAnswer,
+      previousEvaluation
+    });
+
+    res.json({
+      success: true,
+      message: 'Next adaptive question generated successfully',
+      data: nextQuestion
+    });
+  } catch (error) {
+    console.error('[INTERVIEW CONTROLLER ERROR] Failed to generate next question:', error.message);
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      errorCode: 'NEXT_QUESTION_ERROR'
+    });
   }
 };
 
@@ -192,37 +233,14 @@ const generateReport = async (req, res) => {
     // Overall score weights: 40% Technical, 40% Communication, 20% Correctness
     const overallScore = Math.round((avgTech * 0.4) + (avgComm * 0.4) + (avgCorrectness * 0.2));
 
-    // 3. Query Llama 3.2 to write a summary analysis report
-    const prompt = `You are an Interview Evaluator.
-    
-    Analyze the candidate's performance based on their mock interview scores:
-    Technical Average Score: ${avgTech}
-    Communication Average Score: ${avgComm}
-    Overall Calculated Score: ${overallScore}
-    
-    Interview Questions and Responses Log:
-    ${JSON.stringify(qaPairs)}
-    
-    Generate and return ONLY a JSON response format matching exactly this schema:
-    {
-      "overallScore": ${overallScore},
-      "strengths": ["Core Strength 1", "Core Strength 2"],
-      "weaknesses": ["Improvement Area 1", "Improvement Area 2"],
-      "resumeSuggestions": ["ATS formatting review tip", "Missing keyword inclusion suggestions"],
-      "learningPath": ["Technology recommendation 1", "System architecture study recommendation 2"]
-    }
-    Only output valid JSON. Do not include markdown wraps, code block indicators, or conversational text.`;
-
-    const fallbackReport = {
+    // 3. Delegate to dedicated lightweight AI reportService
+    const parsedReport = await reportService.generateFinalReport({
+      avgTech,
+      avgComm,
       overallScore,
-      strengths: ['Responds directly to technical prompts', 'Good foundational engineering terminology knowledge'],
-      weaknesses: ['Add detailed code parameter tradeoffs', 'Avoid verbal filler word repetitions'],
-      resumeSuggestions: ['Emphasize metrics and scaling counts in achievements', 'List cloud deployment integrations'],
-      learningPath: ['Study load balancers and system scaling guidelines', 'Practice structural mock layouts']
-    };
-
-    const rawResponse = await generateResponse(prompt, JSON.stringify(fallbackReport));
-    const parsedReport = cleanAndParseJSON(rawResponse, fallbackReport);
+      qaPairs,
+      roleTarget: req.body.roleTarget || 'Software Engineer'
+    });
 
     // 4. Save report record in MySQL
     const reportId = await InterviewReport.create({
@@ -235,18 +253,26 @@ const generateReport = async (req, res) => {
 
     res.json({
       success: true,
-      reportId,
-      report: parsedReport
+      message: 'Final interview report generated successfully',
+      data: {
+        reportId,
+        report: parsedReport
+      }
     });
 
   } catch (error) {
     console.error('[INTERVIEW CONTROLLER ERROR] Failed to generate report:', error.message);
-    res.status(500).json({ success: false, message: error.message });
+    res.status(500).json({
+      success: false,
+      message: error.message,
+      errorCode: 'REPORT_GENERATION_ERROR'
+    });
   }
 };
 
 module.exports = {
   generateQuestions,
+  getNextQuestion,
   startInterview,
   submitAnswer,
   generateReport

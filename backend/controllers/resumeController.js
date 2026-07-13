@@ -1,11 +1,12 @@
 const { extractText } = require('../services/pdfParser');
 const resumeService = require('../services/resumeService');
+const questionService = require('../services/questionService');
 const Resume = require('../models/Resume');
 const { getPool, getDBStatus } = require('../config/db');
 
 /**
- * Handles multipart file uploads, extracts document texts, structures metadata, and saves profile to DB.
- * Incorporates a filename fallback if text extraction yields empty content to prevent Bad Request blocks.
+ * Handles multipart file uploads, extracts document texts, structures metadata,
+ * generates tailored interview questions, and saves the complete profile to DB.
  */
 const uploadResume = async (req, res) => {
   try {
@@ -29,7 +30,22 @@ const uploadResume = async (req, res) => {
     // 2. Parse structural details with Llama 3.2
     const parsedData = await resumeService.parseResume(textContent);
     
-    // 3. Save to database
+    // 3. Generate tailored interview questions based on parsed resume profile
+    let questions = [];
+    try {
+      const skillsStr = Array.isArray(parsedData.skills) ? parsedData.skills.join(', ') : (parsedData.skills || '');
+      questions = await questionService.generateQuestions({
+        name: parsedData.name || 'Candidate',
+        roleTarget: parsedData.roleTarget || 'Software Engineer',
+        experience: parsedData.experience || '1-2 Years',
+        skills: skillsStr,
+        count: 5
+      });
+    } catch (qErr) {
+      console.warn('[RESUME CONTROLLER WARNING] Question generation failed, saving empty:', qErr.message);
+    }
+
+    // 4. Save to database with generated questions
     const userId = req.user ? req.user.id : null;
     const candidateName = parsedData.name || (req.user ? req.user.name : 'Candidate');
 
@@ -39,7 +55,7 @@ const uploadResume = async (req, res) => {
       roleTarget: parsedData.roleTarget,
       experience: parsedData.experience,
       skills: parsedData.skills,
-      questions: [], // Initialized as empty list to prevent frontend render crashes
+      questions: questions,
       resumeText: textContent,
       parsedJson: parsedData
     });
@@ -56,7 +72,7 @@ const uploadResume = async (req, res) => {
         projects: parsedData.projects || [],
         education: parsedData.education,
         certifications: parsedData.certifications || [],
-        questions: [] // Explicitly return empty array for frontend map rendering safety
+        questions: questions
       }
     });
 
@@ -117,6 +133,13 @@ const getLatestResume = async (req, res) => {
     // Parse structures
     const skills = typeof resumeRecord.skills === 'string' ? JSON.parse(resumeRecord.skills) : (resumeRecord.skills || []);
     const parsedJson = typeof resumeRecord.parsed_json === 'string' ? JSON.parse(resumeRecord.parsed_json) : (resumeRecord.parsedJson || null);
+    let questions = [];
+    if (resumeRecord.questions) {
+      try {
+        questions = typeof resumeRecord.questions === 'string' ? JSON.parse(resumeRecord.questions) : resumeRecord.questions;
+        if (!Array.isArray(questions)) questions = [];
+      } catch (e) { questions = []; }
+    }
 
     res.json({
       success: true,
@@ -128,7 +151,8 @@ const getLatestResume = async (req, res) => {
         experience: resumeRecord.experience,
         projects: parsedJson ? (parsedJson.projects || []) : [],
         education: parsedJson ? (parsedJson.education || '') : '',
-        certifications: parsedJson ? (parsedJson.certifications || []) : []
+        certifications: parsedJson ? (parsedJson.certifications || []) : [],
+        questions: questions
       }
     });
 

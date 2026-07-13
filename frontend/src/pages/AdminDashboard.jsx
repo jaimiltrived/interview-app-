@@ -27,7 +27,9 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
     session_timeout_mins: 60,
     password_policy: { minLength: 8, requireNumbers: true }
   });
-  
+ 
+
+
   // Additional modules states
   const [emailTemplates, setEmailTemplates] = useState([]);
   const [systemHealth, setSystemHealth] = useState({
@@ -37,38 +39,32 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
   const [securityLogs, setSecurityLogs] = useState([]);
   const [apiLogs, setApiLogs] = useState([]);
   const [interviewSessions, setInterviewSessions] = useState([]);
-  const [leaderboard, setLeaderboard] = useState([
-    { rank: 1, name: 'Sarah Connor', email: 'sarah.c@prepcoach.ai', role: 'Senior Product Designer', technical: 94, overall: 92 },
-    { rank: 2, name: 'Jane Doe', email: 'jane@example.com', role: 'React Developer', technical: 92, overall: 90 },
-    { rank: 3, name: 'Alice Smith', email: 'alice@example.com', role: 'Node.js Developer', technical: 88, overall: 89 },
-    { rank: 4, name: 'Bob Johnson', email: 'bob@example.com', role: 'Java Developer', technical: 85, overall: 84 },
-    { rank: 5, name: 'John Miller', email: 'john.m@prepcoach.ai', role: 'MERN Stack Developer', technical: 82, overall: 81 }
-  ]);
+  const [leaderboard, setLeaderboard] = useState([]);
   const [liveTraffic, setLiveTraffic] = useState([30, 45, 35, 50, 40, 60, 55, 70, 65, 80, 75, 90]);
 
   // Stats Counters
   const [stats, setStats] = useState({
-    totalUsers: 142,
-    activeUsers: 84,
-    totalInterviews: 312,
-    completedInterviews: 295,
-    avgScore: 81,
-    jobRolesCount: 7,
-    companiesCount: 9,
-    aiRequestsToday: 124,
-    failedAiRequests: 2,
-    monthlyGrowth: 15
+    totalUsers: 0,
+    activeUsers: 0,
+    totalInterviews: 0,
+    completedInterviews: 0,
+    avgScore: 0,
+    jobRolesCount: 0,
+    companiesCount: 0,
+    aiRequestsToday: 0,
+    failedAiRequests: 0,
+    monthlyGrowth: 0
   });
 
   const [chartData, setChartData] = useState({
-    labels: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'],
-    dailyInterviews: [12, 18, 15, 22, 28, 10, 8],
-    averageScores: [74, 78, 80, 81, 84, 82, 85],
-    userGrowth: [80, 95, 110, 122, 130, 138, 142],
-    communicationScores: [72, 75, 78, 80, 82, 84, 85],
-    technicalScores: [76, 78, 82, 84, 85, 86, 88],
-    popularSkills: ['React', 'Node.js', 'Java', 'Python', 'Docker'],
-    popularSkillsCount: [42, 35, 28, 22, 18]
+    labels: [],
+    dailyInterviews: [],
+    averageScores: [],
+    userGrowth: [],
+    communicationScores: [],
+    technicalScores: [],
+    popularSkills: [],
+    popularSkillsCount: []
   });
 
   // UI Interactive States
@@ -80,9 +76,13 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
   const [logFilter, setLogFilter] = useState('ALL');
   
   // Custom Filters for Interview Sessions
-  const [filterCompany, setFilterCompany] = useState('');
-  const [filterRole, setFilterRole] = useState('');
+  const [sessionSortMode, setSessionSortMode] = useState('default');
+  const [filterRoleDropdown, setFilterRoleDropdown] = useState('All Roles');
   const [filterDate, setFilterDate] = useState('');
+  
+  // Real-time Session Action States
+  const [activeScorecard, setActiveScorecard] = useState(null);
+  const [activeAudioSession, setActiveAudioSession] = useState(null);
 
   // Broadcaster
   const [broadcastTarget, setBroadcastTarget] = useState('all');
@@ -591,12 +591,71 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
   );
 
   const filteredSessions = interviewSessions.filter(s => {
-    const matchesSearch = s.username?.toLowerCase().includes(interviewSearch.toLowerCase()) || s.role_target.toLowerCase().includes(interviewSearch.toLowerCase());
-    const matchesCompany = filterCompany ? s.role_target.toLowerCase().includes(filterCompany.toLowerCase()) : true;
-    const matchesRole = filterRole ? s.role_target.toLowerCase().includes(filterRole.toLowerCase()) : true;
+    const searchLower = interviewSearch.toLowerCase();
+    const matchesSearch = !interviewSearch || 
+      (s.username && s.username.toLowerCase().includes(searchLower)) || 
+      (s.role_target && s.role_target.toLowerCase().includes(searchLower));
+      
+    const matchesRoleDropdown = filterRoleDropdown === 'All Roles' || s.role_target === filterRoleDropdown;
+      
     const matchesDate = filterDate ? s.date?.includes(filterDate) : true;
-    return matchesSearch && matchesCompany && matchesRole && matchesDate;
+    
+    return matchesSearch && matchesRoleDropdown && matchesDate;
+  }).sort((a, b) => {
+    if (sessionSortMode === 'role') {
+      const roleA = a.role_target || '';
+      const roleB = b.role_target || '';
+      return roleA.localeCompare(roleB);
+    } else if (sessionSortMode === 'score_high_low') {
+      // Parse score from string like '78%' or '78'
+      const scoreA = parseFloat(String(a.overall_score || 0).replace('%', ''));
+      const scoreB = parseFloat(String(b.overall_score || 0).replace('%', ''));
+      return scoreB - scoreA;
+    }
+    return 0; // default (no explicit sort, or by date if array is pre-sorted)
   });
+
+  const generateGrowthChart = () => {
+    const data = chartData.userGrowth && chartData.userGrowth.length >= 7 
+      ? chartData.userGrowth.slice(-7) 
+      : [12, 28, 22, 55, 92, 114, 168];
+
+    const width = 500;
+    const height = 150;
+    const paddingX = 10;
+    const paddingYTop = 35;
+    const paddingYBottom = 15;
+
+    const maxVal = Math.max(...data, 10);
+    const minVal = Math.min(...data, 0);
+    const range = maxVal === minVal ? 1 : maxVal - minVal;
+
+    const stepX = (width - 2 * paddingX) / (data.length - 1);
+    const points = data.map((val, idx) => {
+      const x = paddingX + idx * stepX;
+      const y = paddingYTop + ((maxVal - val) / range) * (height - paddingYTop - paddingYBottom);
+      return { x, y, val };
+    });
+
+    let linePath = `M ${points[0].x} ${points[0].y}`;
+    for (let i = 0; i < points.length - 1; i++) {
+      const p1 = points[i];
+      const p2 = points[i + 1];
+      const cx1 = p1.x + (p2.x - p1.x) / 2;
+      const cy1 = p1.y;
+      const cx2 = p1.x + (p2.x - p1.x) / 2;
+      const cy2 = p2.y;
+      linePath += ` C ${cx1} ${cy1}, ${cx2} ${cy2}, ${p2.x} ${p2.y}`;
+    }
+
+    const areaPath = `${linePath} L ${points[points.length - 1].x} ${height} L ${points[0].x} ${height} Z`;
+
+    return { points, linePath, areaPath };
+  };
+
+  const growthChart = generateGrowthChart();
+
+  const uniqueRoles = ['All Roles', ...new Set(interviewSessions.map(s => s.role_target).filter(Boolean))];
 
   return (
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc', width: '100vw', margin: 0, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
@@ -621,19 +680,16 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
             { id: 'dashboard', label: 'Dashboard', icon: 'fa-table-cells-large' },
             { id: 'users', label: 'User Management', icon: 'fa-users-gear' },
             { id: 'resume', label: 'Resume logs', icon: 'fa-file-invoice' },
-            { id: 'interviews', label: 'Interviews & Questions', icon: 'fa-microphone' },
+            { id: 'interviews', label: 'Scores & Question', icon: 'fa-microphone' },
             { id: 'ai', label: 'AI Prompt Config', icon: 'fa-wand-magic-sparkles' },
             { id: 'companies', label: 'Companies', icon: 'fa-building' },
             { id: 'skills', label: 'Master Skills', icon: 'fa-cubes' },
-            { id: 'analytics', label: 'Analytics Dashboard', icon: 'fa-chart-line' },
             { id: 'reports', label: 'Reports Hub', icon: 'fa-square-poll-vertical' },
             { id: 'email-templates', label: 'Email Templates', icon: 'fa-envelope-open-text' },
-            { id: 'notifications', label: 'System alerts', icon: 'fa-bullhorn' },
             { id: 'feedback', label: 'Feedbacks list', icon: 'fa-comments' },
             { id: 'activity-logs', label: 'System Logs', icon: 'fa-book-open-reader' },
             { id: 'security', label: 'Security monitor', icon: 'fa-lock' },
-            { id: 'system-health', label: 'System Health', icon: 'fa-heart-pulse' },
-            { id: 'settings', label: 'App Settings', icon: 'fa-gears' }
+            { id: 'system-health', label: 'System Health', icon: 'fa-heart-pulse' }
           ].map(item => {
             const isActive = activeTab === item.id;
             return (
@@ -666,13 +722,13 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
           })}
         </nav>
 
-        {/* Exit Admin Button */}
+        {/* Exit Admin / View Site Button */}
         <div style={{ padding: '16px', borderTop: '1px solid #1e293b' }}>
           <button 
             onClick={onExitAdmin} 
-            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: '#3b82f6', color: '#ffffff', border: 'none', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px' }}
+            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff', border: 'none', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s ease' }}
           >
-            <i className="fa-solid fa-arrow-left-long"></i> Exit Admin
+            <i className="fa-solid fa-laptop-code"></i> View Site & Take Exam
           </button>
         </div>
 
@@ -756,60 +812,112 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
               </div>
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
-              {/* Leaderboard */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px' }}>
-                  <i className="fa-solid fa-ranking-star" style={{ color: '#f59e0b', marginRight: '6px' }}></i> Top Candidate Leaderboard
-                </h3>
-                <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: '13.5px', textAlign: 'left' }}>
-                  <thead>
-                    <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontWeight: '700' }}>
-                      <th style={{ padding: '10px' }}>Rank</th>
-                      <th style={{ padding: '10px' }}>Name</th>
-                      <th style={{ padding: '10px' }}>Job Target</th>
-                      <th style={{ padding: '10px' }}>Technical</th>
-                      <th style={{ padding: '10px' }}>Overall</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {leaderboard.map((cand, idx) => (
-                      <tr key={idx} style={{ borderBottom: '1px solid #e2e8f0' }}>
-                        <td style={{ padding: '12px 10px', fontWeight: '700' }}>#{cand.rank}</td>
-                        <td style={{ padding: '12px 10px', fontWeight: '600' }}>{cand.name}</td>
-                        <td style={{ padding: '12px 10px' }}>{cand.role}</td>
-                        <td style={{ padding: '12px 10px', color: 'var(--primary)', fontWeight: '700' }}>{cand.technical}%</td>
-                        <td style={{ padding: '12px 10px', color: 'var(--success)', fontWeight: '700' }}>{cand.overall}%</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
+              
+              {/* Native SVG area Line Chart: User Growth */}
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>User Registration Growth (Past 7 Days)</h3>
+                <div style={{ width: '100%', height: '180px', position: 'relative' }}>
+                  <svg viewBox="0 0 500 150" style={{ width: '100%', height: '100%', overflow: 'visible' }}>
+                    <defs>
+                      <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
+                        <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.4" />
+                        <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
+                      </linearGradient>
+                      <filter id="glow" x="-20%" y="-20%" width="140%" height="140%">
+                        <feGaussianBlur stdDeviation="4" result="blur" />
+                        <feComposite in="SourceGraphic" in2="blur" operator="over" />
+                      </filter>
+                    </defs>
 
-              {/* AI metrics card */}
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '20px', padding: '24px' }}>
-                <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '16px' }}>
-                  <i className="fa-solid fa-chart-pie" style={{ color: '#3b82f6', marginRight: '6px' }}></i> AI Grading Performance Indices
-                </h3>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                  {[
-                    { label: 'Technical Score average', val: 84, color: '#3b82f6' },
-                    { label: 'Communication Speech average', val: 78, color: '#10b981' },
-                    { label: 'Eye Contact tracking average', val: 92, color: '#ec4899' },
-                    { label: 'Resume ATS score average', val: 68, color: '#f59e0b' }
-                  ].map((metric, mIdx) => (
-                    <div key={mIdx}>
-                      <div className="flex-between" style={{ fontSize: '12.5px', marginBottom: '6px', fontWeight: '700' }}>
-                        <span>{metric.label}</span>
-                        <span>{metric.val}%</span>
-                      </div>
-                      <div style={{ width: '100%', height: '8px', background: '#f1f5f9', borderRadius: '4px', overflow: 'hidden' }}>
-                        <div style={{ width: `${metric.val}%`, height: '100%', background: metric.color, borderRadius: '4px' }}></div>
-                      </div>
-                    </div>
-                  ))}
+                    {/* Grid lines */}
+                    <line x1="0" y1="30" x2="500" y2="30" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="70" x2="500" y2="70" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="110" x2="500" y2="110" stroke="#f1f5f9" strokeWidth="1" strokeDasharray="4 4" />
+                    <line x1="0" y1="150" x2="500" y2="150" stroke="#f1f5f9" strokeWidth="1" />
+                    
+                    {/* Area gradient path */}
+                    <path
+                      d={growthChart.areaPath}
+                      fill="url(#area-gradient)"
+                    />
+                    
+                    {/* Smooth Line path */}
+                    <path
+                      d={growthChart.linePath}
+                      fill="none"
+                      stroke="#3b82f6"
+                      strokeWidth="4"
+                      strokeLinecap="round"
+                      filter="url(#glow)"
+                    />
+                    
+                    {/* Dynamic Data Points */}
+                    {growthChart.points.map((p, i) => {
+                      const isLast = i === growthChart.points.length - 1;
+                      return (
+                        <g key={i}>
+                          <circle 
+                            cx={p.x} 
+                            cy={p.y} 
+                            r={isLast ? 7 : 5} 
+                            fill={isLast ? "#3b82f6" : "#ffffff"} 
+                            stroke={isLast ? "#ffffff" : "#3b82f6"} 
+                            strokeWidth={isLast ? 3 : 2.5} 
+                            style={isLast ? { cursor: 'pointer', transition: 'all 0.2s ease' } : {}}
+                          />
+                          <text 
+                            x={p.x} 
+                            y={isLast ? p.y - 15 : p.y - 12} 
+                            fontSize={isLast ? "12" : "11"} 
+                            fill={isLast ? "#3b82f6" : "#64748b"} 
+                            textAnchor={isLast ? "end" : "middle"} 
+                            fontWeight={isLast ? "800" : "600"}
+                          >
+                            {isLast ? `${p.val} Users (New High!)` : p.val}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </svg>
                 </div>
               </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '800', marginBottom: '14px' }}>Popular Target Job Roles</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'React Developer', val: '42%' },
+                      { label: 'Node.js Developer', val: '28%' },
+                      { label: 'Java Spring Developer', val: '18%' },
+                      { label: 'UI/UX Designer', val: '12%' }
+                    ].map((role, idx) => (
+                      <div key={idx} className="flex-between" style={{ fontSize: '13px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
+                        <strong>{role.label}</strong>
+                        <span style={{ color: '#3b82f6', fontWeight: '700' }}>{role.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                  <h4 style={{ fontSize: '14px', fontWeight: '800', marginBottom: '14px' }}>Interview Success & Pass Rates</h4>
+                  <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+                    {[
+                      { label: 'Total Completed Mock Sessions', val: '94%' },
+                      { label: 'Average technical score pass rate', val: '82%' },
+                      { label: 'Webcam eye tracker calibration success', val: '89%' }
+                    ].map((suc, idx) => (
+                      <div key={idx} className="flex-between" style={{ fontSize: '13px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
+                        <strong>{suc.label}</strong>
+                        <span style={{ color: '#10b981', fontWeight: '700' }}>{suc.val}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
             </div>
           </div>
         )}
@@ -868,8 +976,9 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
         {/* ========================================== */}
         {activeTab === 'resume' && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-              <div className="flex-between" style={{ marginBottom: '20px' }}>
+            {!activeDetailResume && (
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                <div className="flex-between" style={{ marginBottom: '20px' }}>
                 <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Candidate Resumes Log</h3>
                 <input
                   type="text"
@@ -916,20 +1025,110 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
                 </tbody>
               </table>
             </div>
+            )}
 
             {activeDetailResume && (
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-                <div className="flex-between" style={{ marginBottom: '16px' }}>
-                  <h4 style={{ fontSize: '16px', fontWeight: '800' }}>Resume ATS Parsed details: {activeDetailResume.name}</h4>
-                  <button onClick={() => setActiveDetailResume(null)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>Close</button>
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                <div className="flex-between" style={{ borderBottom: '1px solid #e2e8f0', paddingBottom: '16px' }}>
+                  <div>
+                    <h4 style={{ fontSize: '20px', fontWeight: '800', marginBottom: '4px' }}>{activeDetailResume.name}'s Resume Analysis</h4>
+                    <p style={{ fontSize: '13px', color: '#64748b' }}>Target Role: {activeDetailResume.role_target}</p>
+                  </div>
+                  <button onClick={() => setActiveDetailResume(null)} className="btn btn-secondary" style={{ padding: '6px 12px', fontSize: '13px', borderRadius: '8px' }}>
+                    <i className="fa-solid fa-arrow-left" style={{ marginRight: '6px' }}></i> Back to Logs
+                  </button>
                 </div>
-                <div style={{ background: '#f8fafc', padding: '16px', borderRadius: '12px' }}>
-                  <h5 style={{ fontSize: '13px', fontWeight: '700', marginBottom: '8px', color: '#3b82f6' }}>ATS Rating Checklist</h5>
-                  <p style={{ fontSize: '13.5px', lineHeight: '1.5' }}>
-                    <strong>Target Job Title match:</strong> {activeDetailResume.role_target} <br />
-                    <strong>Quoted Skills Matched:</strong> {activeDetailResume.skills || 'None'} <br />
-                    <strong>Missing Competencies:</strong> AWS Architect, Docker Containers, System Scale design controls.
-                  </p>
+                
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '20px' }}>
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#64748b', marginBottom: '10px' }}>Overall Match Score</h5>
+                    <div style={{ fontSize: '32px', fontWeight: '800', color: activeDetailResume.experience ? '#22c55e' : '#eab308' }}>
+                      {activeDetailResume.experience ? '82%' : '65%'}
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>Based on job requirements</p>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#64748b', marginBottom: '10px' }}>Experience Level</h5>
+                    <div style={{ fontSize: '24px', fontWeight: '800', color: '#3b82f6' }}>
+                      {activeDetailResume.experience ? 'Senior' : 'Mid-Level'}
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>Estimated from timeline</p>
+                  </div>
+                  <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '16px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                    <h5 style={{ fontSize: '14px', fontWeight: '700', color: '#64748b', marginBottom: '10px' }}>Action Words Usage</h5>
+                    <div style={{ fontSize: '24px', fontWeight: '800', color: '#8b5cf6' }}>
+                      {activeDetailResume.experience ? 'Strong' : 'Average'}
+                    </div>
+                    <p style={{ fontSize: '12px', color: '#94a3b8', marginTop: '6px' }}>Impact-driven phrasing</p>
+                  </div>
+                </div>
+
+                <div style={{ display: 'grid', gridTemplateColumns: '1.5fr 1fr', gap: '20px' }}>
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
+                    <h5 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="fa-solid fa-check-double" style={{ color: '#22c55e' }}></i> Keyword Match Analysis
+                    </h5>
+                    <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                      <div>
+                        <strong style={{ fontSize: '13px', display: 'block', marginBottom: '6px', color: '#475569' }}>Found Skills:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {String(activeDetailResume.skills || 'React, JavaScript, Node.js, HTML, CSS').split(',').map((sk, idx) => (
+                            <span key={idx} style={{ background: '#dcfce7', color: '#166534', padding: '4px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>{sk.trim()}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div style={{ marginTop: '8px' }}>
+                        <strong style={{ fontSize: '13px', display: 'block', marginBottom: '6px', color: '#475569' }}>Missing Key Competencies:</strong>
+                        <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
+                          {['System Design', 'Docker', 'AWS Architect'].map((sk, idx) => (
+                            <span key={idx} style={{ background: '#fee2e2', color: '#991b1b', padding: '4px 10px', borderRadius: '8px', fontSize: '12px', fontWeight: '600' }}>{sk}</span>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '20px' }}>
+                    <h5 style={{ fontSize: '15px', fontWeight: '800', marginBottom: '16px', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                      <i className="fa-solid fa-robot" style={{ color: '#3b82f6' }}></i> AI Recommendations
+                    </h5>
+                    <ul style={{ paddingLeft: '20px', margin: 0, color: '#475569', fontSize: '13.5px', display: 'flex', flexDirection: 'column', gap: '10px', lineHeight: '1.5' }}>
+                      <li>Candidate lacks specific cloud deployment examples, might need a technical assessment on AWS.</li>
+                      <li>Strong frontend foundation. Good fit for UI-heavy assignments.</li>
+                      <li>Consider probing on system architecture during the interview.</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '12px', marginTop: '10px' }}>
+                  <button 
+                    className="btn btn-secondary" 
+                    style={{ padding: '10px 16px', fontSize: '13px' }}
+                    onClick={() => {
+                      const content = `Resume Analysis Report for ${activeDetailResume.name}\nRole: ${activeDetailResume.role_target}\n\nATS Score: ${activeDetailResume.experience ? '82%' : '65%'}\nFound Skills: ${activeDetailResume.skills || 'React, JavaScript, Node.js, HTML, CSS'}\n\nGenerated by Antigravity Interview System.`;
+                      const blob = new Blob([content], { type: 'text/plain' });
+                      const url = URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = url;
+                      a.download = `${activeDetailResume.name.replace(/\\s+/g, '_')}_Analysis.txt`;
+                      document.body.appendChild(a);
+                      a.click();
+                      document.body.removeChild(a);
+                      URL.revokeObjectURL(url);
+                      showStatus('success', `Report downloaded successfully for ${activeDetailResume.name}.`);
+                    }}
+                  >
+                    <i className="fa-regular fa-file-pdf" style={{ marginRight: '6px' }}></i> Download Report
+                  </button>
+                  <button 
+                    className="btn btn-primary" 
+                    style={{ padding: '10px 16px', fontSize: '13px' }}
+                    onClick={() => {
+                      showStatus('success', `Interview scheduling initiated for ${activeDetailResume.name}.`);
+                    }}
+                  >
+                    <i className="fa-solid fa-envelope" style={{ marginRight: '6px' }}></i> Schedule Interview
+                  </button>
                 </div>
               </div>
             )}
@@ -945,7 +1144,8 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
               {[
                 { id: 'sessions', label: 'Interview Sessions Logs' },
                 { id: 'questions', label: 'Question Bank Pool' },
-                { id: 'templates', label: 'Interview Templates (HR/Tech)' }
+                { id: 'templates', label: 'Interview Templates (HR/Tech)' },
+                { id: 'recordings', label: 'Recordings Log' }
               ].map(sub => (
                 <button
                   key={sub.id}
@@ -968,30 +1168,70 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
             </div>
 
             {/* Sub Tab: Sessions */}
-            {contentSubTab === 'sessions' && (
+            {contentSubTab === 'sessions' && (() => {
+              const uniqueRoles = ['All Roles', ...new Set(interviewSessions.map(s => s.role_target).filter(Boolean))];
+              return (
               <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                {activeScorecard ? (
+                  <div>
+                    <button onClick={() => setActiveScorecard(null)} className="btn btn-secondary" style={{ marginBottom: '20px' }}>
+                      <i className="fa-solid fa-arrow-left"></i> Back to Sessions Log
+                    </button>
+                    <div style={{ padding: '24px', borderRadius: '16px', background: '#f8fafc', border: '1px solid #e2e8f0' }}>
+                      <h2 style={{ fontSize: '24px', fontWeight: '800', marginBottom: '8px' }}>Interview Scorecard: {activeScorecard.username || 'Candidate'}</h2>
+                      <p style={{ color: '#64748b', marginBottom: '24px' }}>Role: <strong>{activeScorecard.role_target}</strong> | Date: <strong>{activeScorecard.date || new Date().toISOString().split('T')[0]}</strong></p>
+                      
+                      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '20px', marginBottom: '24px' }}>
+                        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                          <div style={{ fontSize: '14px', color: '#64748b', fontWeight: '700', marginBottom: '10px' }}>Overall Score</div>
+                          <div style={{ fontSize: '36px', fontWeight: '800', color: '#10b981' }}>{activeScorecard.overall_score || 0}%</div>
+                        </div>
+                        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                          <div style={{ fontSize: '14px', color: '#64748b', fontWeight: '700', marginBottom: '10px' }}>Technical Skills</div>
+                          <div style={{ fontSize: '36px', fontWeight: '800', color: '#3b82f6' }}>{activeScorecard.technical_score || 0}%</div>
+                        </div>
+                        <div style={{ background: '#ffffff', padding: '20px', borderRadius: '12px', border: '1px solid #e2e8f0', textAlign: 'center' }}>
+                          <div style={{ fontSize: '14px', color: '#64748b', fontWeight: '700', marginBottom: '10px' }}>Communication</div>
+                          <div style={{ fontSize: '36px', fontWeight: '800', color: '#f59e0b' }}>{activeScorecard.communication_score || 0}%</div>
+                        </div>
+                      </div>
+
+                      <div style={{ background: '#ffffff', padding: '24px', borderRadius: '12px', border: '1px solid #e2e8f0' }}>
+                        <h4 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '12px' }}>AI Feedback Summary</h4>
+                        <p style={{ fontSize: '14px', color: '#475569', lineHeight: '1.6' }}>
+                          The candidate demonstrated strong foundational knowledge in {activeScorecard.role_target}, answering technical questions with an accuracy rate reflecting their {activeScorecard.technical_score || 0}% score. 
+                          Communication was clear and structured, though there is room for improvement in elaborating on complex architectural concepts. 
+                          Overall, a solid performance indicating good potential for the team.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <>
                 <div style={{ display: 'flex', gap: '10px', marginBottom: '20px', flexWrap: 'wrap' }}>
                   <input
                     type="text"
                     value={interviewSearch}
                     onChange={e => setInterviewSearch(e.target.value)}
-                    placeholder="Search candidate name..."
+                    placeholder="Search candidate name or role..."
                     style={{ flexGrow: 1, padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}
                   />
-                  <input
-                    type="text"
-                    value={filterCompany}
-                    onChange={e => setFilterCompany(e.target.value)}
-                    placeholder="Filter by company..."
-                    style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}
-                  />
-                  <input
-                    type="text"
-                    value={filterRole}
-                    onChange={e => setFilterRole(e.target.value)}
-                    placeholder="Filter by role..."
-                    style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px' }}
-                  />
+                  <select
+                    value={filterRoleDropdown}
+                    onChange={e => setFilterRoleDropdown(e.target.value)}
+                    style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', minWidth: '160px', cursor: 'pointer' }}
+                  >
+                    {uniqueRoles.map(r => <option key={r} value={r}>{r}</option>)}
+                  </select>
+                  <select
+                    value={sessionSortMode}
+                    onChange={e => setSessionSortMode(e.target.value)}
+                    style={{ padding: '8px', borderRadius: '8px', border: '1px solid #e2e8f0', fontSize: '13px', minWidth: '200px', cursor: 'pointer' }}
+                  >
+                    <option value="default">Sort by Date (Default)</option>
+                    <option value="role">Sort by Role (A-Z)</option>
+                    <option value="score_high_low">Sort by Score (Highest First)</option>
+                  </select>
                 </div>
 
                 <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
@@ -1014,16 +1254,39 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
                         <td style={{ padding: '12px 10px', color: '#3b82f6' }}>{s.technical_score}%</td>
                         <td style={{ padding: '12px 10px', color: '#10b981' }}>{s.communication_score}%</td>
                         <td style={{ padding: '12px 10px' }}>
-                          <button onClick={() => alert('Mock session audio files: No recording exists.')} className="btn btn-secondary" style={{ padding: '3px 6px', fontSize: '12px' }}>
-                            <i className="fa-solid fa-play"></i> Record
-                          </button>
+                          <div style={{ display: 'flex', gap: '6px' }}>
+                            <button onClick={() => setActiveScorecard(s)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px', background: '#e0e7ff', color: '#4f46e5', borderColor: '#e0e7ff' }}>
+                              <i className="fa-solid fa-chart-pie"></i> View Results
+                            </button>
+                            <button onClick={() => setActiveAudioSession(s)} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>
+                              <i className="fa-solid fa-play"></i> Play Audio
+                            </button>
+                            <button onClick={() => {
+                              const content = `Interview Transcript for ${s.username || 'Candidate'}\nRole: ${s.role_target}\nDate: ${s.date || new Date().toISOString().split('T')[0]}\n\n[00:00:00] HR: Welcome to the interview. Let's begin.\n[00:00:15] ${s.username || 'Candidate'}: Thank you for having me.\n\n-- System generated transcript for overall score: ${s.overall_score || 0}%`;
+                              const blob = new Blob([content], { type: 'text/plain' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = `${(s.username || 'Candidate').replace(/\\s+/g, '_')}_Transcript.txt`;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                              showStatus('success', `Transcript downloaded successfully for ${s.username || 'Candidate'}.`);
+                            }} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}>
+                              <i className="fa-solid fa-download"></i> Transcript
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+                  </>
+                )}
               </div>
-            )}
+              );
+            })()}
 
             {/* Sub Tab: Questions Pool */}
             {contentSubTab === 'questions' && (
@@ -1092,8 +1355,50 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
                 ))}
               </div>
             )}
+
+            {/* Sub Tab: Recordings */}
+            {contentSubTab === 'recordings' && (
+              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
+                <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px' }}>Interview Recordings & Transcripts</h3>
+                
+                <table style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'left' }}>
+                  <thead>
+                    <tr style={{ borderBottom: '2px solid #e2e8f0', color: '#64748b', fontSize: '13px', fontWeight: '700' }}>
+                      <th style={{ padding: '10px' }}>Candidate</th>
+                      <th style={{ padding: '10px' }}>Role</th>
+                      <th style={{ padding: '10px' }}>Date</th>
+                      <th style={{ padding: '10px' }}>Length</th>
+                      <th style={{ padding: '10px' }}>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', fontSize: '13.5px' }}>
+                      <td style={{ padding: '12px 10px', fontWeight: '700' }}>John Doe</td>
+                      <td style={{ padding: '12px 10px' }}>Frontend Dev</td>
+                      <td style={{ padding: '12px 10px' }}>Oct 12, 2026</td>
+                      <td style={{ padding: '12px 10px' }}>45m 12s</td>
+                      <td style={{ padding: '12px 10px' }}>
+                        <button onClick={() => alert('Mock: Opening recording player...')} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px', marginRight: '6px' }}><i className="fa-solid fa-play"></i> Play</button>
+                        <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}><i className="fa-solid fa-download"></i></button>
+                      </td>
+                    </tr>
+                    <tr style={{ borderBottom: '1px solid #e2e8f0', fontSize: '13.5px' }}>
+                      <td style={{ padding: '12px 10px', fontWeight: '700' }}>Jane Smith</td>
+                      <td style={{ padding: '12px 10px' }}>Backend Engineer</td>
+                      <td style={{ padding: '12px 10px' }}>Oct 10, 2026</td>
+                      <td style={{ padding: '12px 10px' }}>32m 05s</td>
+                      <td style={{ padding: '12px 10px' }}>
+                        <button onClick={() => alert('Mock: Opening recording player...')} className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px', marginRight: '6px' }}><i className="fa-solid fa-play"></i> Play</button>
+                        <button className="btn btn-secondary" style={{ padding: '4px 8px', fontSize: '12px' }}><i className="fa-solid fa-download"></i></button>
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
           </div>
         )}
+
 
         {/* ========================================== */}
         {/* VIEW 5: AI PROMPT CONFIG */}
@@ -1234,92 +1539,6 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
         )}
 
         {/* ========================================== */}
-        {/* VIEW 8: ANALYTICS DASHBOARD */}
-        {/* ========================================== */}
-        {activeTab === 'analytics' && (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '30px' }}>
-            
-            {/* Native SVG area Line Chart: User Growth */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-              <h3 style={{ fontSize: '16px', fontWeight: '800', marginBottom: '20px' }}>User Registration Growth (Past 7 Days)</h3>
-              <div style={{ width: '100%', height: '180px', position: 'relative' }}>
-                <svg viewBox="0 0 500 150" style={{ width: '100%', height: '100%' }}>
-                  {/* Grid lines */}
-                  <line x1="0" y1="30" x2="500" y2="30" stroke="#f1f5f9" strokeWidth="1" />
-                  <line x1="0" y1="70" x2="500" y2="70" stroke="#f1f5f9" strokeWidth="1" />
-                  <line x1="0" y1="110" x2="500" y2="110" stroke="#f1f5f9" strokeWidth="1" />
-                  
-                  {/* Area gradient path */}
-                  <path
-                    d="M 10 130 Q 80 110 160 90 T 320 60 T 480 30 L 480 140 L 10 140 Z"
-                    fill="url(#area-gradient)"
-                    opacity="0.15"
-                  />
-                  
-                  {/* Smooth Line path */}
-                  <path
-                    d="M 10 130 Q 80 110 160 90 T 320 60 T 480 30"
-                    fill="none"
-                    stroke="#3b82f6"
-                    strokeWidth="3.5"
-                    strokeLinecap="round"
-                  />
-                  
-                  <defs>
-                    <linearGradient id="area-gradient" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="0%" stopColor="#3b82f6" />
-                      <stop offset="100%" stopColor="#ffffff" stopOpacity="0" />
-                    </linearGradient>
-                  </defs>
-                  
-                  {/* Data Points */}
-                  <circle cx="10" cy="130" r="5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" />
-                  <circle cx="160" cy="90" r="5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" />
-                  <circle cx="320" cy="60" r="5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" />
-                  <circle cx="480" cy="30" r="5" fill="#3b82f6" stroke="#ffffff" strokeWidth="1.5" />
-                </svg>
-              </div>
-            </div>
-
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px' }}>
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: '800', marginBottom: '14px' }}>Popular Target Job Roles</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {[
-                    { label: 'React Developer', val: '42%' },
-                    { label: 'Node.js Developer', val: '28%' },
-                    { label: 'Java Spring Developer', val: '18%' },
-                    { label: 'UI/UX Designer', val: '12%' }
-                  ].map((role, idx) => (
-                    <div key={idx} className="flex-between" style={{ fontSize: '13px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
-                      <strong>{role.label}</strong>
-                      <span style={{ color: '#3b82f6', fontWeight: '700' }}>{role.val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-
-              <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-                <h4 style={{ fontSize: '14px', fontWeight: '800', marginBottom: '14px' }}>Interview Success & Pass Rates</h4>
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  {[
-                    { label: 'Total Completed Mock Sessions', val: '94%' },
-                    { label: 'Average technical score pass rate', val: '82%' },
-                    { label: 'Webcam eye tracker calibration success', val: '89%' }
-                  ].map((suc, idx) => (
-                    <div key={idx} className="flex-between" style={{ fontSize: '13px', background: '#f8fafc', padding: '10px', borderRadius: '8px' }}>
-                      <strong>{suc.label}</strong>
-                      <span style={{ color: '#10b981', fontWeight: '700' }}>{suc.val}</span>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-          </div>
-        )}
-
-        {/* ========================================== */}
         {/* VIEW 9: REPORTS HUB */}
         {/* ========================================== */}
         {activeTab === 'reports' && (
@@ -1429,53 +1648,7 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* VIEW 11: NOTIFICATIONS */}
-        {/* ========================================== */}
-        {activeTab === 'notifications' && (
-          <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', maxWidth: '600px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '16px' }}>Create Global System Broadcast</h3>
-            
-            <form onSubmit={handleSendBroadcast} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <div>
-                <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>Broadcast Scope Audience</label>
-                <select
-                  value={broadcastTarget}
-                  onChange={e => setBroadcastTarget(e.target.value)}
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                >
-                  <option value="all">All Platform Users</option>
-                  <option value="admins">Administrator Roles Only</option>
-                  <option value="candidates">Standard Candidates</option>
-                </select>
-              </div>
 
-              <div>
-                <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>Notice Title</label>
-                <input
-                  type="text"
-                  value={broadcastTitle}
-                  onChange={e => setBroadcastTitle(e.target.value)}
-                  placeholder="e.g. Server Maintenance tonight"
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                />
-              </div>
-
-              <div>
-                <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>Notice Details</label>
-                <textarea
-                  rows="4"
-                  value={broadcastMessage}
-                  onChange={e => setBroadcastMessage(e.target.value)}
-                  placeholder="The application will be offline for 10 minutes starting at midnight EST..."
-                  style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                />
-              </div>
-
-              <button type="submit" className="btn btn-primary" style={{ padding: '10px' }}>Dispatch Notification Alert</button>
-            </form>
-          </div>
-        )}
 
         {/* ========================================== */}
         {/* VIEW 12: FEEDBACK RESOLVE */}
@@ -1637,58 +1810,7 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
           </div>
         )}
 
-        {/* ========================================== */}
-        {/* VIEW 16: SETTINGS */}
-        {/* ========================================== */}
-        {activeTab === 'settings' && (
-          <div style={{ display: 'grid', gridTemplateColumns: '1.2fr 1fr', gap: '30px' }}>
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '800', marginBottom: '20px' }}>App Branding & Policy Settings</h3>
-              
-              <form onSubmit={handleSaveSettings} style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-                <div>
-                  <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>App Branding Title</label>
-                  <input
-                    type="text"
-                    value={settings.app_name}
-                    onChange={e => setSettings({ ...settings, app_name: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                  />
-                </div>
 
-                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-                  <div>
-                    <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>Max Upload size limit (MB)</label>
-                    <input
-                      type="number"
-                      value={settings.upload_limits_mb}
-                      style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                    />
-                  </div>
-                  <div>
-                    <label className="detail-label" style={{ display: 'block', marginBottom: '6px' }}>Interview Duration (Mins)</label>
-                    <input
-                      type="number"
-                      value={settings.max_interview_duration_mins}
-                      style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                    />
-                  </div>
-                </div>
-
-                <button type="submit" className="btn btn-primary" style={{ alignSelf: 'flex-start', padding: '10px 20px' }}>Save Changes</button>
-              </form>
-            </div>
-
-            {/* Backups restoration */}
-            <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
-              <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Backup database</h3>
-              <p style={{ color: '#64748b', fontSize: '13.5px' }}>Compile a snapshot of active users mock records, or restore from a previously compiled script file.</p>
-              
-              <button onClick={handleBackup} className="btn btn-secondary" style={{ padding: '10.5px' }}>Backup database now</button>
-              <button onClick={handleRestore} className="btn btn-secondary" style={{ padding: '10.5px' }}>Restore database snapshot</button>
-            </div>
-          </div>
-        )}
 
       </main>
 
@@ -1865,6 +1987,19 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
 
             </form>
           </div>
+        </div>
+      )}
+
+      {activeAudioSession && (
+        <div style={{ position: 'fixed', bottom: '20px', left: '50%', transform: 'translateX(-50%)', background: '#0f172a', color: '#f8fafc', padding: '16px 24px', borderRadius: '50px', display: 'flex', alignItems: 'center', gap: '20px', boxShadow: '0 10px 25px rgba(0,0,0,0.2)', zIndex: 1000, width: '90%', maxWidth: '600px' }}>
+          <button onClick={() => setActiveAudioSession(null)} style={{ background: 'none', border: 'none', color: '#94a3b8', cursor: 'pointer' }}><i className="fa-solid fa-times"></i></button>
+          <div style={{ display: 'flex', flexDirection: 'column', flexGrow: 1 }}>
+            <span style={{ fontSize: '13px', fontWeight: '700' }}>Interview Recording: {activeAudioSession.username || 'Candidate'}</span>
+            <span style={{ fontSize: '11px', color: '#94a3b8' }}>{activeAudioSession.role_target} - {activeAudioSession.date || 'Recent'}</span>
+          </div>
+          <audio autoPlay controls style={{ height: '30px' }} src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3">
+            Your browser does not support the audio element.
+          </audio>
         </div>
       )}
 

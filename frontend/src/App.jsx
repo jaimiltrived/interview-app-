@@ -8,9 +8,12 @@ import QuestionLibrary from './pages/QuestionLibrary';
 import AdminDashboard from './pages/AdminDashboard';
 import LandingPage from './pages/LandingPage';
 import Profile from './pages/Profile';
+import ActivityTracker from './pages/ActivityTracker';
 import InterviewSetup from './pages/InterviewSetup';
 import Login from './pages/Login';
 import Register from './pages/Register';
+import ErrorBoundary from './components/ErrorBoundary';
+import toast, { Toaster } from 'react-hot-toast';
 
 export default function App() {
   const [token, setToken] = useState(localStorage.getItem('coach_jwt_token'));
@@ -18,8 +21,8 @@ export default function App() {
   
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [userProfile, setUserProfile] = useState({
-    name: localStorage.getItem('coach_user_name') || 'Sarah',
-    role: localStorage.getItem('coach_user_role') || 'Senior Product Designer',
+    name: localStorage.getItem('coach_user_name') || 'User',
+    role: localStorage.getItem('coach_user_role') || '',
     userRole: localStorage.getItem('coach_user_system_role') || 'candidate',
     skills: ['React.js', 'JavaScript', 'CSS Grid', 'System Design'],
     experience: '5 Years',
@@ -30,10 +33,10 @@ export default function App() {
   const [sessionHistory, setSessionHistory] = useState([]);
   const [dbStatus, setDbStatus] = useState({ databaseConnected: false, storageMode: 'Checking...' });
 
-  // Default avatar image that matches the screenshots
-  const avatarUrl = userProfile.name === 'Sarah'
-    ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200' // Sarah
-    : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200'; // Default Male
+  // Dynamic avatar logic
+  const avatarUrl = userProfile.photoUrl
+    ? userProfile.photoUrl
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name || 'User')}&background=0D8ABC&color=fff`;
 
   // Load profile and history when token changes
   useEffect(() => {
@@ -103,7 +106,12 @@ export default function App() {
       role: user.role === 'candidate' ? 'Candidate Profile' : 'Internal Management',
       userRole: user.role || 'candidate'
     }));
-    setCurrentPage('dashboard');
+    
+    if (['super_admin', 'admin', 'content_manager'].includes(user.role)) {
+      setCurrentPage('admin');
+    } else {
+      setCurrentPage('dashboard');
+    }
   };
 
   const handleLogout = () => {
@@ -116,7 +124,6 @@ export default function App() {
     setCurrentPage('dashboard');
   };
 
-  // Switch and trigger updates
   const handlePageSwitch = (pageId) => {
     if (pageId === 'dashboard' && token) {
       fetchHistory(token);
@@ -133,7 +140,7 @@ export default function App() {
       if (data.success && data.resume) {
         setCurrentPage('setup');
       } else {
-        alert('Please upload a resume first to customize technical mock questions matching your experience level!');
+        toast.error('Please upload a resume first to customize technical mock questions matching your experience level!');
         setCurrentPage('resume');
       }
     } catch (err) {
@@ -161,9 +168,10 @@ export default function App() {
       );
     }
     return (
-      <>
+      <ErrorBoundary>
         <div className="glow-orb orb-1"></div>
         <div className="glow-orb orb-2"></div>
+        <Toaster position="top-right" />
         <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100vh', padding: '20px', background: '#f5f7fb' }}>
           
           <button 
@@ -197,7 +205,7 @@ export default function App() {
             />
           )}
         </div>
-      </>
+      </ErrorBoundary>
     );
   }
 
@@ -211,7 +219,8 @@ export default function App() {
   }
 
   return (
-    <>
+    <ErrorBoundary>
+      <Toaster position="top-right" />
       <div className="glow-orb orb-1"></div>
       <div className="glow-orb orb-2"></div>
 
@@ -234,7 +243,7 @@ export default function App() {
           <img 
             className="avatar-img" 
             src={avatarUrl} 
-            alt="Sarah profile" 
+            alt="User profile" 
             onClick={() => handlePageSwitch('resume')}
             style={{ cursor: 'pointer' }}
           />
@@ -318,6 +327,12 @@ export default function App() {
               onLogout={handleLogout}
             />
           )}
+
+          {currentPage === 'activity' && (
+            <ActivityTracker 
+              sessionHistory={sessionHistory}
+            />
+          )}
         </main>
 
         {/* Bottom Navigation for Mobile viewports */}
@@ -350,8 +365,15 @@ export default function App() {
             <i className="fa-solid fa-square-poll-vertical"></i>
             <span>Reports</span>
           </a>
+          <a 
+            className={`bottom-nav-item ${currentPage === 'activity' ? 'active' : ''}`}
+            onClick={() => handlePageSwitch('activity')}
+          >
+            <i className="fa-solid fa-fire"></i>
+            <span>Activity</span>
+          </a>
         </nav>
       </div>
-    </>
+    </ErrorBoundary>
   );
 }

@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import toast from 'react-hot-toast';
 
 export default function FeedbackReport({ selectedId, sessionHistory, switchPage }) {
   const [report, setReport] = useState(null);
@@ -150,7 +151,7 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
         </button>
         <h1 style={{ fontSize: '20px', fontWeight: '800', color: '#0f172a', margin: 0, fontFamily: 'Outfit' }}>Feedback Report</h1>
         <button 
-          onClick={() => alert('Report link copied to clipboard!')}
+          onClick={() => toast.success('Report link copied to clipboard!')}
           style={{ background: 'none', border: 'none', fontSize: '18px', color: '#0f172a', cursor: 'pointer' }}
         >
           <i className="fa-solid fa-share-nodes"></i>
@@ -330,7 +331,7 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
       {/* Action Buttons */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
         <button 
-          onClick={() => alert('Launching video feedback review...')}
+          onClick={() => toast.success('Launching video feedback review...')}
           className="btn btn-primary"
           style={{
             height: '48px',

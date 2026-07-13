@@ -239,116 +239,124 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
         <p className="page-desc">Load your resume to configure skills and generate personalized interview questions.</p>
       </div>
 
-      <div className="glass-card">
-        {parsedData ? (
-          <h2 className="report-section-title">
-            <i className="fa-solid fa-clipboard-check" style={{ color: '#16a34a' }}></i> Active Candidate Profile
+      {/* Recommended Resume Card - shown when a saved resume exists */}
+      {parsedData && !loading && (
+        <div className="glass-card" style={{ marginBottom: '24px', border: '2px solid #10b981', background: 'linear-gradient(135deg, #ecfdf5 0%, #f0fdf4 100%)', position: 'relative', overflow: 'hidden' }}>
+          <div style={{ position: 'absolute', top: '16px', right: '16px', background: '#10b981', color: '#fff', padding: '4px 14px', borderRadius: '20px', fontSize: '12px', fontWeight: '700', letterSpacing: '0.5px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <i className="fa-solid fa-star"></i> RECOMMENDED
+          </div>
+          <h2 className="report-section-title" style={{ color: '#065f46' }}>
+            <i className="fa-solid fa-clipboard-check" style={{ color: '#10b981' }}></i> Your Saved Resume Profile
           </h2>
-        ) : (
+          <p style={{ color: '#047857', fontSize: '13.5px', marginBottom: '20px', fontWeight: '500' }}>
+            This resume is saved in your account. You can practice with it directly or upload a new one below.
+          </p>
+
+          <div className="resume-result-layout">
+            <div className="resume-details" style={{ background: '#ffffff', borderRadius: '16px', padding: '20px', border: '1px solid #d1fae5' }}>
+              <h3><i className="fa-solid fa-clipboard-user"></i> Candidate Profile</h3>
+              <div className="detail-row">
+                <div className="detail-label">Name</div>
+                <div className="detail-val">{parsedData.name || userProfile.name}</div>
+              </div>
+              <div className="detail-row">
+                <div className="detail-label">Inferred Target Role</div>
+                <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget}</div>
+              </div>
+              <div className="detail-row">
+                <div className="detail-label">Experience Rating</div>
+                <div className="detail-val">{parsedData.experience || 'Not Specified'}</div>
+              </div>
+              <div className="detail-row">
+                <div className="detail-label">Skills Extracted</div>
+                <div className="badge-container" style={{ marginTop: '5px' }}>
+                  {(parsedData.skills || []).map((skill, i) => (
+                    <span key={i} className="badge primary">{skill}</span>
+                  ))}
+                </div>
+              </div>
+            </div>
+
+            <div className="resume-details" style={{ background: '#ffffff', borderRadius: '16px', padding: '20px', border: '1px solid #d1fae5' }}>
+              <h3><i className="fa-solid fa-circle-question"></i> Tailored Technical Practice</h3>
+              <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', marginBottom: '15px' }}>
+                AI-generated questions matched to your skills and target role.
+              </p>
+              <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {parsedData.questions && parsedData.questions.length > 0 ? (
+                  parsedData.questions.map((q, i) => (
+                    <li key={i} style={{ fontSize: '14.5px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
+                      <i className="fa-solid fa-chevron-right text-success" style={{ marginTop: '4px' }}></i>
+                      <span>{q}</span>
+                    </li>
+                  ))
+                ) : (
+                  <li style={{ fontSize: '13.5px', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '8px' }}>
+                    <i className="fa-solid fa-circle-info" style={{ color: '#0b4fcd' }}></i>
+                    <span>Questions will generate automatically from your tech stack upon startup.</span>
+                  </li>
+                )}
+              </ul>
+            </div>
+          </div>
+
+          <div className="flex-row-center mt-4" style={{ justifyContent: 'flex-end', gap: '15px' }}>
+            <button className="btn btn-secondary" onClick={handleReset}>
+              <i className="fa-solid fa-file-arrow-up"></i> Upload Different Resume
+            </button>
+            <button className="btn btn-success" onClick={handleStart}>
+              <i className="fa-solid fa-circle-play"></i> Start Practice Session
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Upload section - shown when no resume or user clicked re-upload */}
+      {!parsedData && (
+        <div className="glass-card">
           <h2 className="report-section-title">
             <i className="fa-solid fa-file-arrow-up"></i> Upload Resume File
           </h2>
-        )}
 
-        {/* 1. Drag & Drop box */}
-        {!loading && !parsedData && (
-          <div 
-            className={`upload-container ${dragOver ? 'dragover' : ''}`}
-            onDragOver={(e) => handleDrag(e, true)}
-            onDragLeave={(e) => handleDrag(e, false)}
-            onDrop={handleDrop}
-            onClick={() => document.getElementById('fileInput').click()}
-          >
-            <div className="upload-icon">
-              <i className="fa-solid fa-cloud-arrow-up"></i>
-            </div>
-            <div className="upload-text">Drag & drop your resume file here or click to browse</div>
-            <div className="upload-sub">Supports PDF, DOCX, TXT (Max size: 5MB)</div>
-            <input 
-              type="file" 
-              id="fileInput" 
-              style={{ display: 'none' }} 
-              accept=".pdf,.docx,.txt"
-              onChange={handleFileChange}
-            />
-          </div>
-        )}
-
-        {/* 2. Loading Parser Progress */}
-        {loading && (
-          <div className="analysis-progress">
-            <div className="progress-bar">
-              <div className="progress-fill" style={{ width: `${progress}%` }}></div>
-            </div>
-            <div className="analysis-step">
-              <i className="fa-solid fa-circle-notch"></i>
-              <span>{statusText}</span>
-            </div>
-          </div>
-        )}
-
-        {/* 3. Output results */}
-        {parsedData && !loading && (
-          <div>
-            <div className="resume-result-layout">
-              <div className="resume-details">
-                <h3><i className="fa-solid fa-clipboard-user"></i> Extracted Candidate Profile</h3>
-                <div className="detail-row">
-                  <div className="detail-label">Name</div>
-                  <div className="detail-val">{parsedData.name || userProfile.name}</div>
-                </div>
-                <div className="detail-row">
-                  <div className="detail-label">Inferred Target Role</div>
-                  <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget}</div>
-                </div>
-                <div className="detail-row">
-                  <div className="detail-label">Experience Rating</div>
-                  <div className="detail-val">{parsedData.experience || 'Not Specified'}</div>
-                </div>
-                <div className="detail-row">
-                  <div className="detail-label">Skills Extracted</div>
-                  <div className="badge-container" style={{ marginTop: '5px' }}>
-                    {(parsedData.skills || []).map((skill, i) => (
-                      <span key={i} className="badge primary">{skill}</span>
-                    ))}
-                  </div>
-                </div>
+          {/* Drag & Drop box */}
+          {!loading && (
+            <div 
+              className={`upload-container ${dragOver ? 'dragover' : ''}`}
+              onDragOver={(e) => handleDrag(e, true)}
+              onDragLeave={(e) => handleDrag(e, false)}
+              onDrop={handleDrop}
+              onClick={() => document.getElementById('fileInput').click()}
+            >
+              <div className="upload-icon">
+                <i className="fa-solid fa-cloud-arrow-up"></i>
               </div>
+              <div className="upload-text">Drag & drop your resume file here or click to browse</div>
+              <div className="upload-sub">Supports PDF, DOCX, TXT (Max size: 5MB)</div>
+              <input 
+                type="file" 
+                id="fileInput" 
+                style={{ display: 'none' }} 
+                accept=".pdf,.docx,.txt"
+                onChange={handleFileChange}
+              />
+            </div>
+          )}
 
-              <div className="resume-details">
-                <h3><i className="fa-solid fa-circle-question"></i> Tailored Technical Practice</h3>
-                <p style={{ color: 'var(--text-muted)', fontSize: '13.5px', marginBottom: '15px' }}>
-                  The AI interviewer will dynamically tailor technical questions focusing on your skills and target role.
-                </p>
-                <ul style={{ listStyle: 'none', display: 'flex', flexDirection: 'column', gap: '12px' }}>
-                  {parsedData.questions && parsedData.questions.length > 0 ? (
-                    parsedData.questions.map((q, i) => (
-                      <li key={i} style={{ fontSize: '14.5px', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
-                        <i className="fa-solid fa-chevron-right text-success" style={{ marginTop: '4px' }}></i>
-                        <span>{q}</span>
-                      </li>
-                    ))
-                  ) : (
-                    <li style={{ fontSize: '13.5px', color: 'var(--text-muted)', fontStyle: 'italic', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                      <i className="fa-solid fa-circle-info" style={{ color: '#0b4fcd' }}></i>
-                      <span>Questions will generate automatically from your tech stack upon startup.</span>
-                    </li>
-                  )}
-                </ul>
+          {/* Loading Parser Progress */}
+          {loading && (
+            <div className="analysis-progress">
+              <div className="progress-bar">
+                <div className="progress-fill" style={{ width: `${progress}%` }}></div>
+              </div>
+              <div className="analysis-step">
+                <i className="fa-solid fa-circle-notch"></i>
+                <span>{statusText}</span>
               </div>
             </div>
-
-            <div className="flex-row-center mt-4" style={{ justifyContent: 'flex-end', gap: '15px' }}>
-              <button className="btn btn-secondary" onClick={handleReset}>
-                <i className="fa-solid fa-rotate-left"></i> Re-Upload Resume
-              </button>
-              <button className="btn btn-success" onClick={handleStart}>
-                <i className="fa-solid fa-circle-play"></i> Start Practice Session
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
+

@@ -92,13 +92,14 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
     if (practiceMode === 'resume' && activeResume) {
       try {
         const token = localStorage.getItem('coach_jwt_token');
-        const genRes = await fetch('/api/interview/generate', {
+        const genRes = await fetch('/api/interview/next-question', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`
           },
           body: JSON.stringify({
+            stepIndex: 0,
             name: activeResume.name,
             roleTarget: activeResume.roleTarget,
             skills: activeResume.skills,
@@ -106,26 +107,18 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
           })
         });
         const genData = await genRes.json();
-        if (genData.success) {
-          const flatQuestions = [
-            ...(genData.questions.hr || []),
-            ...(genData.questions.technical || []),
-            ...(genData.questions.project || []),
-            ...(genData.questions.behavioral || [])
-          ];
-          qList = flatQuestions;
+        if (genData.success && genData.data) {
+          qList = [genData.data];
         }
       } catch (err) {
-        console.error('Failed to generate resume questions:', err);
+        console.error('Failed to generate opening adaptive question:', err);
       }
     }
 
     if (qList.length === 0) {
       // General Mode default questions fallback
       qList = [
-        "Could you start by introducing yourself and walking me through your background and key strengths?",
-        "Can you describe a challenging technical problem you encountered in a recent project, and how you went about resolving it?",
-        "How do you prioritize tasks and manage your time when dealing with tight deadlines and competing requirements?"
+        { question: "Could you start by introducing yourself and walking me through your background and key strengths?", type: "hr" }
       ];
     }
 
@@ -396,13 +389,18 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
     fillerHistoryRef.current.push(fillerCount);
     eyeHistoryRef.current.push(eyeContact);
 
+    const nextIdx = currentIdx + 1;
+    const TOTAL_QUESTIONS = 5;
+
     // Call intermediate evaluation endpoint
+    let evaluationResult = null;
     const questionObj = questions[currentIdx];
     const questionId = questionObj?.id;
-    if (questionId) {
+    const token = localStorage.getItem('coach_jwt_token');
+
+    if (questionId && token) {
       try {
-        const token = localStorage.getItem('coach_jwt_token');
-        await fetch('/api/interview/answer', {
+        const ansRes = await fetch('/api/interview/answer', {
           method: 'POST',
           headers: { 
             'Content-Type': 'application/json',
@@ -410,17 +408,58 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
           },
           body: JSON.stringify({ questionId, answer: finalAnswer })
         });
+        const ansData = await ansRes.json();
+        if (ansData.success) {
+          evaluationResult = ansData.evaluation;
+        }
         console.log('[AI] Successfully logged intermediate answer score.');
       } catch (err) {
         console.warn('[AI] Failed to log intermediate answer score:', err.message);
       }
     }
 
-    const nextIdx = currentIdx + 1;
-    if (nextIdx < questions.length) {
-      loadQuestionPrompt(nextIdx, questions[nextIdx]);
+    if (nextIdx < TOTAL_QUESTIONS) {
+      if (nextIdx < questions.length) {
+        loadQuestionPrompt(nextIdx, questions[nextIdx]);
+      } else {
+        // Fetch adaptive next question smoothly
+        try {
+          const genRes = await fetch('/api/interview/next-question', {
+            method: 'POST',
+            headers: { 
+              'Content-Type': 'application/json',
+              'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+              stepIndex: nextIdx,
+              roleTarget: activeResume?.roleTarget || userProfile?.role || 'Software Engineer',
+              skills: activeResume?.skills || [],
+              projects: activeResume?.projects || [],
+              previousQuestion: typeof questionObj === 'object' ? questionObj.question : questionObj,
+              previousAnswer: finalAnswer,
+              previousEvaluation: evaluationResult
+            })
+          });
+          const genData = await genRes.json();
+          if (genData.success && genData.data) {
+            setQuestions(prev => [...prev, genData.data]);
+            loadQuestionPrompt(nextIdx, genData.data);
+            return;
+          }
+        } catch (err) {
+          console.warn('Adaptive question fetch fallback:', err);
+        }
+
+        // Fallback smooth question if API was unavailable
+        const fallbackNext = {
+          question: `Can you walk me through how you design for scalability and maintainability in your core projects?`,
+          type: 'technical'
+        };
+        setQuestions(prev => [...prev, fallbackNext]);
+        loadQuestionPrompt(nextIdx, fallbackNext);
+      }
     } else {
-      // Completed last question, submit results to backend
+      // Completed last question, submit results smoothly to backend
       submitSessionResults();
     }
   };
@@ -874,7 +913,6 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
           {/* Next Question Pill button */}
           <button
             onClick={handleNextQuestion}
-            disabled={coachSpeaking || (!liveTranscript && !isListening)}
             style={{
               height: '54px',
               borderRadius: '16px',
@@ -888,12 +926,11 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
               alignItems: 'center',
               gap: '10px',
               cursor: 'pointer',
-              opacity: coachSpeaking || (!liveTranscript && !isListening) ? 0.5 : 1,
               transition: 'all 0.2s ease'
             }}
           >
-            <span>Next Question</span>
-            <i className="fa-solid fa-arrow-right"></i>
+            <span>{(!liveTranscript && !isListening) ? 'Skip Question' : 'Next Question'}</span>
+            <i className={`fa-solid ${(!liveTranscript && !isListening) ? 'fa-forward-step' : 'fa-arrow-right'}`}></i>
           </button>
         </div>
 

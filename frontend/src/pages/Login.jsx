@@ -28,6 +28,8 @@ export default function Login({ onLoginSuccess, switchToRegister }) {
         throw new Error(data.error || 'Login failed');
       }
 
+
+
       localStorage.setItem('coach_jwt_token', data.token);
       localStorage.setItem('coach_user_name', data.user.name);
       localStorage.setItem('coach_user_email', data.user.email);

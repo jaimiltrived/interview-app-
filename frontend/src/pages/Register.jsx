@@ -8,6 +8,8 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const [loading, setLoading] = useState(false);
+  const [file, setFile] = useState(null);
+  const [uploadStatus, setUploadStatus] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
@@ -32,14 +34,50 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
         throw new Error(data.error || 'Registration failed');
       }
 
-      setSuccess('Account created successfully! Redirecting to login...');
+      setSuccess('Account created successfully! Setting up your profile...');
+      setUploadStatus('Creating account...');
       
       // Store temporary role preference so the app loads it on login
       localStorage.setItem('coach_user_role', role);
 
+      // If there's a file, we need to login to get a token, then upload it
+      if (file) {
+        setUploadStatus('Authenticating...');
+        const loginRes = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password })
+        });
+        const loginData = await loginRes.json();
+
+        if (loginRes.ok && loginData.token) {
+          setUploadStatus('Uploading and parsing resume (this may take a few seconds)...');
+          const formData = new FormData();
+          formData.append('file', file);
+          formData.append('candidateName', name);
+
+          try {
+            await fetch('/api/resume/upload', {
+              method: 'POST',
+              headers: { 'Authorization': `Bearer ${loginData.token}` },
+              body: formData
+            });
+            setSuccess('Profile and resume saved! Redirecting...');
+          } catch (uploadErr) {
+            console.warn('Resume upload failed during registration:', uploadErr);
+            // We don't throw here so the user still proceeds, they can upload later
+            setSuccess('Account created! (Resume upload failed, you can upload it later). Redirecting...');
+          }
+        }
+      } else {
+        setSuccess('Account created successfully! Redirecting to login...');
+      }
+
+      setUploadStatus('');
+      
       setTimeout(() => {
         onRegisterSuccess();
-      }, 1500);
+      }, 2000);
     } catch (err) {
       setError(err.message);
     } finally {
@@ -121,6 +159,45 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
             />
           </div>
 
+          <div>
+            <label className="detail-label" style={{ marginBottom: '5px', display: 'block', color: 'var(--text-muted)' }}>Upload Resume (Optional)</label>
+            <div 
+              style={{
+                width: '100%', 
+                padding: '16px 12px', 
+                borderRadius: '10px', 
+                background: '#f8fafc', 
+                border: '1px dashed #cbd5e1', 
+                textAlign: 'center',
+                cursor: 'pointer',
+                color: 'var(--text-muted)',
+                fontSize: '13px'
+              }}
+              onClick={() => document.getElementById('registerFileInput').click()}
+            >
+              {file ? (
+                <div style={{ color: 'var(--primary)', fontWeight: 'bold' }}>
+                  <i className="fa-solid fa-file-pdf" style={{ marginRight: '6px' }}></i>
+                  {file.name}
+                </div>
+              ) : (
+                <div>
+                  <i className="fa-solid fa-cloud-arrow-up" style={{ fontSize: '18px', marginBottom: '6px', color: '#94a3b8' }}></i>
+                  <div>Click to attach your resume (PDF/DOCX)</div>
+                </div>
+              )}
+            </div>
+            <input 
+              type="file" 
+              id="registerFileInput" 
+              style={{ display: 'none' }} 
+              accept=".pdf,.docx,.txt"
+              onChange={(e) => {
+                if (e.target.files.length) setFile(e.target.files[0]);
+              }}
+            />
+          </div>
+
           <button 
             type="submit" 
             className="btn btn-primary" 
@@ -128,7 +205,7 @@ export default function Register({ onRegisterSuccess, switchToLogin }) {
             disabled={loading}
           >
             {loading ? (
-              <span><i className="fa-solid fa-circle-notch fa-spin"></i> Creating...</span>
+              <span><i className="fa-solid fa-circle-notch fa-spin"></i> {uploadStatus || 'Creating...'}</span>
             ) : (
               <span>Register Account <i className="fa-solid fa-user-plus" style={{ marginLeft: '6px' }}></i></span>
             )}

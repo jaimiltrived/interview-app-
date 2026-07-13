@@ -1,8 +1,9 @@
 const { generateResponse, cleanAndParseJSON } = require('./ollamaService');
+const { getStructuredFallback, getFlatFallback, getTechnicalFallback, pickRandom, questionBank } = require('./questionBank');
 
 /**
  * Generates structured mock interview questions in batches (3 HR, 3 Tech, 2 Project, 2 Behavioral).
- * Number of questions is optimized to minimize local LLM token generation speed lags.
+ * Uses a large randomized question bank as fallback to ensure unique questions every session.
  */
 const generateStructuredQuestions = async ({ name = 'Candidate', roleTarget = 'Software Engineer', skills = [], projects = [] }) => {
   const sessionSeed = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -29,26 +30,8 @@ const generateStructuredQuestions = async ({ name = 'Candidate', roleTarget = 'S
   }
   Only output valid JSON.`;
 
-  const fallbackQuestions = {
-    hr: [
-      "Tell me about yourself and your background.",
-      "Why are you interested in joining our company?",
-      "How do you handle working under high-pressure environments with tight deadlines?"
-    ],
-    technical: [
-      "Explain the differences between client-side rendering and server-side rendering.",
-      "What is the significance of middleware in an Express application and how does it execute?",
-      "How do indexes optimize database lookups and what are their storage implications in MySQL?"
-    ],
-    project: [
-      `Could you describe the system architecture of your project: "${projects[0] || 'Personal Portfolio'}"?`,
-      `What were the major technical hurdles you faced when building: "${projects[0] || 'Personal Portfolio'}" and how did you resolve them?`
-    ],
-    behavioral: [
-      "Describe a time you encountered a significant conflict with a developer inside your team. How did you handle it?",
-      "Tell me about a time you failed to meet a target deadline. How did you communicate this to stakeholders and recover?"
-    ]
-  };
+  // Randomized fallback — different questions every time
+  const fallbackQuestions = getStructuredFallback(skills, projects);
 
   // Pass jsonMode = true (third argument) and high temperature = 0.85 (fourth argument) for layout variety
   const rawResponse = await generateResponse(prompt, JSON.stringify(fallbackQuestions), true, 0.85);
@@ -64,6 +47,7 @@ const generateStructuredQuestions = async ({ name = 'Candidate', roleTarget = 'S
 
 /**
  * Legacy support: Generates a flat list of questions based on candidate details.
+ * Uses randomized question bank as fallback for unique questions every session.
  */
 const generateQuestions = async ({ name = 'Candidate', roleTarget = 'Software Engineer', experience = '1-2 Years', skills = '', count = 3 }) => {
   const sessionSeed = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
@@ -82,11 +66,8 @@ const generateQuestions = async ({ name = 'Candidate', roleTarget = 'Software En
   }
   Only output valid JSON.`;
 
-  const fallbackQuestions = [
-    `Can you describe a challenging technical problem you solved using ${skills || 'your programming skills'}?`,
-    `How do you optimize performance and manage state rendering in a large scale ${roleTarget} application?`,
-    `Explain the database design guidelines and indexes you employ to minimize query latency.`
-  ].slice(0, count);
+  // Randomized fallback — different questions every time, matched to candidate skills
+  const fallbackQuestions = getFlatFallback(skills, count);
 
   const rawResponse = await generateResponse(prompt, JSON.stringify({ questions: fallbackQuestions }), true, 0.85);
   const parsed = cleanAndParseJSON(rawResponse, { questions: fallbackQuestions });
@@ -151,6 +132,81 @@ const generateFollowUpQuestion = async (lastQuestion = '', lastAnswer = '') => {
   return await generateResponse(prompt, defaultQuestion);
 };
 
+/**
+ * Adaptive AI-first question generation: Generates ONE tailored question at a time.
+ * Adapts based on candidate step index, resume skills, and previous answer evaluation.
+ */
+const generateNextQuestion = async ({
+  stepIndex = 0,
+  roleTarget = 'Software Engineer',
+  skills = [],
+  projects = [],
+  previousQuestion = '',
+  previousAnswer = '',
+  previousEvaluation = null
+}) => {
+  const primarySkill = skills.length > 0 ? skills[0] : 'JavaScript';
+  const typeMap = ['hr', 'technical', 'technical', 'project', 'behavioral', 'technical'];
+  const targetType = typeMap[stepIndex % typeMap.length];
+
+  let prompt = '';
+  let fallbackQuestion = '';
+
+  if (stepIndex === 0) {
+    prompt = `You are an executive interviewer hiring for a "${roleTarget}".
+    Candidate skills: ${JSON.stringify(skills)}
+    Generate a single professional opening interview question tailored to their background.
+    Return ONLY valid JSON matching exactly:
+    {
+      "question": "Opening interview question text here",
+      "type": "hr"
+    }`;
+    fallbackQuestion = `Welcome! Could you briefly walk me through your background with ${primarySkill} and why you're interested in the ${roleTarget} role?`;
+  } else if (previousEvaluation && (previousEvaluation.technicalScore < 70 || previousEvaluation.correctness < 70)) {
+    prompt = `You are a technical interviewer for "${roleTarget}".
+    Previously asked: "${previousQuestion}"
+    Candidate answered: "${previousAnswer}"
+    Interviewer feedback: "${previousEvaluation.feedback || 'Needed improvement'}"
+    
+    Generate a constructive follow-up or clarifying technical question to help probe their conceptual understanding of ${primarySkill}.
+    Return ONLY valid JSON matching exactly:
+    {
+      "question": "Follow-up question text here",
+      "type": "technical"
+    }`;
+    fallbackQuestion = `Could you elaborate on how you handle error handling or state consistency when working with ${primarySkill}?`;
+  } else {
+    prompt = `You are a senior interviewer for "${roleTarget}".
+    Candidate skills: ${JSON.stringify(skills)}
+    Candidate projects: ${JSON.stringify(projects)}
+    Generate the next distinct "${targetType}" interview question challenging their skills.
+    Return ONLY valid JSON matching exactly:
+    {
+      "question": "Next interview question text here",
+      "type": "${targetType}"
+    }`;
+    fallbackQuestion = targetType === 'project'
+      ? `Can you discuss a technical challenge or architectural tradeoff you faced while developing one of your projects?`
+      : `What are some best practices you follow to optimize performance and maintainability in ${primarySkill} applications?`;
+  }
+
+  const fallbackData = { question: fallbackQuestion, type: targetType, stepIndex };
+
+  try {
+    const rawResponse = await generateResponse(prompt, JSON.stringify(fallbackData), true);
+    const parsed = cleanAndParseJSON(rawResponse, fallbackData);
+
+    return {
+      question: parsed.question || fallbackQuestion,
+      type: parsed.type || targetType,
+      stepIndex
+    };
+  } catch (error) {
+    console.warn('[QUESTION SERVICE WARNING] Falling back to deterministic adaptive question:', error.message);
+    return fallbackData;
+  }
+};
+
 module.exports = {
   generateStructuredQuestions,
   generateQuestions,
@@ -158,5 +214,6 @@ module.exports = {
   generateBehavioralQuestion,
   generateHRQuestion,
   generateCompanyQuestion,
-  generateFollowUpQuestion
+  generateFollowUpQuestion,
+  generateNextQuestion
 };

@@ -73,9 +73,9 @@ const generateResponse = async (prompt, fallbackText = '', jsonMode = false, tem
         apiUrl += 'v1/chat/completions';
       }
 
-      // Set up a 12-second abort timeout for local generation speed
+      // Set up a 120-second abort timeout for local generation speed
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch(apiUrl, {
         method: 'POST',
@@ -123,9 +123,9 @@ const generateResponse = async (prompt, fallbackText = '', jsonMode = false, tem
         requestBody.format = 'json';
       }
 
-      // Set up a 12-second abort timeout for local generation speed
+      // Set up a 120-second abort timeout for local generation speed
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 12000);
+      const timeoutId = setTimeout(() => controller.abort(), 120000);
 
       const response = await fetch(`${host}/api/generate`, {
         method: 'POST',

@@ -9,6 +9,9 @@ const resumeRoutes = require('./routes/resume');
 const interviewRoutes = require('./routes/interview');
 const swaggerPaths = require('./config/swaggerPaths');
 const errorHandler = require('./middleware/errorHandler');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 
 // Load environment variables
 dotenv.config();
@@ -51,11 +54,23 @@ const swaggerSpec = swaggerJsdoc(swaggerOptions);
 connectDB();
 
 // Middleware
+app.use(helmet());
+app.use(compression());
 app.use(cors({
-  origin: '*', // Allow all origins for local development simplicity
+  origin: process.env.CLIENT_URL || 'http://localhost:3000',
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization']
 }));
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // limit each IP to 20 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+app.use('/api/login', authLimiter);
+app.use('/api/register', authLimiter);
+app.use('/api/admin-login', authLimiter);
 app.use(express.json({ limit: '10mb' })); // Expand payload limits in case of large resume texts
 app.use(express.urlencoded({ extended: true }));
 
@@ -64,13 +79,16 @@ app.get('/health', (req, res) => {
   res.json({ status: 'OK', message: 'AI Interview Coach Server is running healthy' });
 });
 
-// Swagger API Docs Route
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+// Swagger API Docs Route (Only in development)
+if (process.env.NODE_ENV === 'development') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+}
 
 // API Routes prefix
-app.use('/api', apiRoutes);
+// Mount specific modules first to prevent wildcard parameter interception (e.g. /resume/:id in apiRoutes)
 app.use('/api', resumeRoutes);
 app.use('/api', interviewRoutes);
+app.use('/api', apiRoutes);
 
 // Global Error Handler Middleware
 app.use(errorHandler);
@@ -81,13 +99,18 @@ app.listen(PORT, () => {
   console.log(` AI Interview Coach Server started successfully!`);
   console.log(` Running on port: ${PORT}`);
   console.log(` Health check URL: http://localhost:${PORT}/health`);
-  console.log(` API Documentation: http://localhost:${PORT}/api-docs`);
+  if (process.env.NODE_ENV === 'development') {
+    console.log(` API Documentation: http://localhost:${PORT}/api-docs`);
+  }
   console.log(` API endpoints prefix: http://localhost:${PORT}/api`);
   console.log(`================================================================`);
 });
 
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Internal server error occurred' });
+// Global unhandled promise rejection / uncaught exception handlers
+process.on('unhandledRejection', (reason, promise) => {
+  console.error('Unhandled Rejection at:', promise, 'reason:', reason);
+});
+process.on('uncaughtException', (error) => {
+  console.error('Uncaught Exception:', error);
+  // Ideally gracefully shutdown here
 });

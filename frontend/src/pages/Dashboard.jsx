@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { calculateStreakStats } from '../utils/streakUtils';
 
 export default function Dashboard({ 
   userProfile, 
@@ -10,55 +11,43 @@ export default function Dashboard({
   const [timeframe, setTimeframe] = useState('Month');
   const totalSessions = sessionHistory.length;
   
-  // Calculate average overall score
-  const avgScore = totalSessions > 0
-    ? Math.round(sessionHistory.reduce((sum, s) => sum + s.overallScore, 0) / totalSessions)
-    : null;
-
-  // Real-time calculated averages
-  const avgCommunication = totalSessions > 0
-    ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / totalSessions)
-    : 80;
-
-  const avgTechnical = totalSessions > 0
-    ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / totalSessions)
-    : 75;
-
-  const avgConfidence = totalSessions > 0
-    ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / totalSessions)
-    : 85;
-
-  // Streak calculations
-  const calculateStreak = () => {
-    if (sessionHistory.length === 0) return 3; // default startup streak
-    const dates = [...new Set(sessionHistory.map(s => new Date(s.date).toDateString()))]
-      .map(d => new Date(d))
-      .sort((a, b) => b - a);
+  // Filter sessionHistory based on timeframe for the Recent Progress section
+  const filteredSessions = React.useMemo(() => {
+    if (!sessionHistory || sessionHistory.length === 0) return [];
     
-    let streak = 0;
-    let current = new Date();
-    current.setHours(0, 0, 0, 0);
-
-    const latest = dates[0];
-    if (latest) {
-      const diffTime = Math.abs(current - latest);
-      const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
-      if (diffDays > 2) return 1;
+    const now = new Date();
+    const cutoff = new Date();
+    
+    if (timeframe === 'Week') {
+      cutoff.setDate(now.getDate() - 7);
+    } else { // 'Month'
+      cutoff.setDate(now.getDate() - 30);
     }
+    
+    return sessionHistory.filter(s => new Date(s.date) >= cutoff);
+  }, [sessionHistory, timeframe]);
 
-    for (let i = 0; i < dates.length; i++) {
-      const diff = Math.abs(current - dates[i]);
-      const diffDays = Math.floor(diff / (1000 * 60 * 60 * 24));
-      if (diffDays <= streak + 1) {
-        streak = diffDays + 1;
-      } else {
-        break;
-      }
-    }
-    return Math.max(1, streak);
-  };
-  
-  const currentStreak = calculateStreak();
+  const filteredTotal = filteredSessions.length;
+
+  // Calculate average overall score for filtered sessions
+  const avgScore = filteredTotal > 0
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + s.overallScore, 0) / filteredTotal)
+    : 0;
+
+  // Real-time calculated averages for timeframe
+  const avgCommunication = filteredTotal > 0
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / filteredTotal)
+    : 0;
+
+  const avgTechnical = filteredTotal > 0
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / filteredTotal)
+    : 0;
+
+  const avgConfidence = filteredTotal > 0
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / filteredTotal)
+    : 0;
+
+  const { currentStreak } = calculateStreakStats(sessionHistory);
 
   const formattedDate = (dStr) => {
     try {
@@ -71,15 +60,39 @@ export default function Dashboard({
     }
   };
 
+  const lastSession = sessionHistory.length > 0 ? sessionHistory[0] : null;
+  const card2Title = lastSession ? 'Last Practice Session' : 'Ready to Start?';
+  const roleText = lastSession ? lastSession.roleTarget : (userProfile.role || 'Software Engineer');
+  const focusText = lastSession ? `Overall Score: ${lastSession.overallScore}%` : 'Take your first mock interview today.';
+  const dateText = lastSession ? formattedDate(lastSession.date) : 'Today';
+  const timeText = lastSession ? new Date(lastSession.date).toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit' }) : 'Right Now';
+
+  const getRoleImage = (role) => {
+    const r = role.toLowerCase();
+    if (r.includes('design') || r.includes('ui') || r.includes('ux')) {
+      return 'https://images.unsplash.com/photo-1561070791-2526d30994b5?auto=format&fit=crop&q=80&w=600'; // Design tools/creative
+    }
+    if (r.includes('data') || r.includes('analy') || r.includes('scientist')) {
+      return 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&q=80&w=600'; // Data graphs
+    }
+    if (r.includes('manag') || r.includes('lead') || r.includes('product')) {
+      return 'https://images.unsplash.com/photo-1552664730-d307ca884978?auto=format&fit=crop&q=80&w=600'; // Team meeting
+    }
+    if (r.includes('develop') || r.includes('engineer') || r.includes('software') || r.includes('tech')) {
+      return 'https://images.unsplash.com/photo-1498050108023-c5249f4df085?auto=format&fit=crop&q=80&w=600'; // Laptop/code
+    }
+    return 'https://images.unsplash.com/photo-1522071820081-009f0129c71c?auto=format&fit=crop&q=80&w=600'; // Default nice office
+  };
+
   return (
     <div className="page">
       {/* Welcome Header */}
       <div style={{ marginBottom: '30px' }}>
         <h1 className="page-title" style={{ fontSize: '36px', color: '#0f172a', fontWeight: '800' }}>
-          Welcome back, {userProfile.name || 'Sarah'}
+          Welcome back, {userProfile.name || 'User'}
         </h1>
         <p className="page-desc" style={{ color: '#64748b', fontSize: '15px', marginTop: '6px', maxWidth: '600px', lineHeight: '1.5' }}>
-          Your interview for <strong>{userProfile.role || 'Senior Product Designer'}</strong> is in 4 days. Let's keep the momentum going.
+          Your interview for <strong>{userProfile.role || 'your next big role'}</strong> is in 4 days. Let's keep the momentum going.
         </p>
         
         {/* Next Session Action Pill */}
@@ -145,27 +158,27 @@ export default function Dashboard({
             </div>
           </div>
 
-          {/* Card 2: Upcoming Mock Interview */}
+          {/* Card 2: Last Session Details */}
           <div className="glass-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#0b4fcd', fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-              <i className="fa-solid fa-calendar-check"></i> Upcoming Mock Interview
+              <i className="fa-solid fa-clock-rotate-left"></i> {card2Title}
             </div>
             
             <h2 style={{ fontSize: '24px', marginTop: '12px', marginBottom: '4px', fontWeight: '800', color: '#0f172a' }}>
-              {userProfile.role || 'Senior Product Designer'}
+              {roleText}
             </h2>
-            <p style={{ color: '#64748b', fontSize: '13.5px', margin: '0 0 20px 0', fontWeight: '500' }}>
-              Focus: Systems Thinking & Leadership
+            <p style={{ color: lastSession ? '#16a34a' : '#64748b', fontSize: '13.5px', margin: '0 0 20px 0', fontWeight: '700' }}>
+              {focusText}
             </p>
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginBottom: '20px' }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#334155' }}>
                 <i className="fa-regular fa-calendar" style={{ color: '#0b4fcd', fontSize: '15px' }}></i>
-                <span>Date: <strong>Oct 24, 2026</strong></span>
+                <span>Date: <strong>{dateText}</strong></span>
               </div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', color: '#334155' }}>
                 <i className="fa-regular fa-clock" style={{ color: '#0b4fcd', fontSize: '15px' }}></i>
-                <span>Time: <strong>10:30 AM</strong></span>
+                <span>Time: <strong>{timeText}</strong></span>
               </div>
             </div>
 
@@ -178,45 +191,37 @@ export default function Dashboard({
               boxShadow: 'inset 0 0 20px rgba(0,0,0,0.1)'
             }}>
               <div style={{ 
-                width: '100%', 
-                height: '100%', 
-                background: 'url("https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?auto=format&fit=crop&q=80&w=600") center/cover no-repeat' 
+                width: '100%',
+                height: '100%',
+                background: `url("${getRoleImage(roleText)}") center/cover no-repeat`,
+                position: 'absolute',
+                top: 0,
+                left: 0
               }}>
                 <div 
+                  onClick={lastSession ? () => showHistoricalReport(lastSession.id) : startDirectInterview}
                   style={{
                     position: 'absolute',
-                    top: 0,
-                    left: 0,
-                    width: '100%',
-                    height: '100%',
-                    background: 'linear-gradient(135deg, rgba(11, 79, 205, 0.45) 0%, rgba(14, 165, 233, 0.3) 100%)',
+                    bottom: '16px',
+                    right: '16px',
+                    width: '40px',
+                    height: '40px',
+                    borderRadius: '50%',
+                    backgroundColor: '#ffffff',
+                    color: '#0b4fcd',
                     display: 'flex',
                     alignItems: 'center',
-                    justifyContent: 'flex-end',
-                    padding: '16px'
+                    justifyContent: 'center',
+                    fontSize: '16px',
+                    cursor: 'pointer',
+                    boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
+                    transition: 'transform 0.2s ease'
                   }}
-                  onClick={startDirectInterview}
+                  title={lastSession ? "View Report" : "Start Mock Interview"}
+                  onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
+                  onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
                 >
-                  <div 
-                    style={{
-                      width: '40px',
-                      height: '40px',
-                      borderRadius: '50%',
-                      backgroundColor: '#ffffff',
-                      color: '#0b4fcd',
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      fontSize: '16px',
-                      cursor: 'pointer',
-                      boxShadow: '0 4px 12px rgba(0,0,0,0.15)',
-                      transition: 'transform 0.2s ease'
-                    }}
-                    onMouseEnter={(e) => e.currentTarget.style.transform = 'scale(1.1)'}
-                    onMouseLeave={(e) => e.currentTarget.style.transform = 'scale(1)'}
-                  >
-                    <i className="fa-solid fa-arrow-right"></i>
-                  </div>
+                  <i className={lastSession ? "fa-solid fa-file-lines" : "fa-solid fa-arrow-right"}></i>
                 </div>
               </div>
             </div>
@@ -229,80 +234,93 @@ export default function Dashboard({
             </h3>
             
             <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
-              <div 
-                onClick={() => switchPage('interview')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  padding: '16px',
-                  borderRadius: '16px',
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                className="recom-hover"
-              >
-                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fef2f2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-                  <i className="fa-solid fa-microphone-lines"></i>
-                </div>
-                <div style={{ flexGrow: 1 }}>
-                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Behavioral Drills</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Focus on STAR method responses.</div>
-                </div>
-                <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
-              </div>
+              
+              {userProfile.skills && userProfile.skills.length > 0 ? (
+                userProfile.skills.slice(0, 3).map((skill, index) => {
+                  const icons = ['fa-solid fa-code', 'fa-solid fa-layer-group', 'fa-solid fa-microchip'];
+                  const colors = ['#ef4444', '#0b4fcd', '#8b5cf6'];
+                  const bgColors = ['#fef2f2', '#eff6ff', '#f5f3ff'];
+                  return (
+                    <div 
+                      key={index}
+                      onClick={() => switchPage('interview')}
+                      style={{
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '16px',
+                        padding: '16px',
+                        borderRadius: '16px',
+                        background: '#ffffff',
+                        border: '1px solid #e2e8f0',
+                        cursor: 'pointer',
+                        transition: 'all 0.2s ease'
+                      }}
+                      className="recom-hover"
+                    >
+                      <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: bgColors[index % 3], color: colors[index % 3], display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                        <i className={icons[index % 3]}></i>
+                      </div>
+                      <div style={{ flexGrow: 1 }}>
+                        <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>{skill} Drill</div>
+                        <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Targeted practice based on your resume.</div>
+                      </div>
+                      <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
+                    </div>
+                  );
+                })
+              ) : (
+                <>
+                  <div 
+                    onClick={() => switchPage('interview')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      padding: '16px',
+                      borderRadius: '16px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                    className="recom-hover"
+                  >
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#fef2f2', color: '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                      <i className="fa-solid fa-microphone-lines"></i>
+                    </div>
+                    <div style={{ flexGrow: 1 }}>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Behavioral Drills</div>
+                      <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Focus on STAR method responses.</div>
+                    </div>
+                    <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
+                  </div>
 
-              <div 
-                onClick={() => switchPage('interview')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  padding: '16px',
-                  borderRadius: '16px',
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                className="recom-hover"
-              >
-                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', color: '#0b4fcd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-                  <i className="fa-solid fa-eye"></i>
-                </div>
-                <div style={{ flexGrow: 1 }}>
-                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Body Language Review</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Analyze eye contact from last session.</div>
-                </div>
-                <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
-              </div>
-
-              <div 
-                onClick={() => switchPage('interview')}
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '16px',
-                  padding: '16px',
-                  borderRadius: '16px',
-                  background: '#ffffff',
-                  border: '1px solid #e2e8f0',
-                  cursor: 'pointer',
-                  transition: 'all 0.2s ease'
-                }}
-                className="recom-hover"
-              >
-                <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#f5f3ff', color: '#8b5cf6', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
-                  <i className="fa-solid fa-lightbulb"></i>
-                </div>
-                <div style={{ flexGrow: 1 }}>
-                  <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Industry Trends</div>
-                  <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Top questions for AI companies.</div>
-                </div>
-                <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
-              </div>
+                  <div 
+                    onClick={() => switchPage('interview')}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '16px',
+                      padding: '16px',
+                      borderRadius: '16px',
+                      background: '#ffffff',
+                      border: '1px solid #e2e8f0',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s ease'
+                    }}
+                    className="recom-hover"
+                  >
+                    <div style={{ width: '42px', height: '42px', borderRadius: '10px', background: '#eff6ff', color: '#0b4fcd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '18px' }}>
+                      <i className="fa-solid fa-eye"></i>
+                    </div>
+                    <div style={{ flexGrow: 1 }}>
+                      <div style={{ fontSize: '15px', fontWeight: '700', color: '#0f172a' }}>Body Language Review</div>
+                      <div style={{ fontSize: '13px', color: '#64748b', fontWeight: '500' }}>Analyze eye contact from last session.</div>
+                    </div>
+                    <i className="fa-solid fa-chevron-right" style={{ color: '#94a3b8', fontSize: '12px' }}></i>
+                  </div>
+                </>
+              )}
 
               <div 
                 onClick={startDirectInterview}
@@ -366,7 +384,7 @@ export default function Dashboard({
             </div>
             
             <p style={{ color: '#64748b', fontSize: '13px', margin: '0 0 20px 0', fontWeight: '500' }}>
-              Performance metrics from last 5 sessions
+              Performance metrics from {timeframe === 'Week' ? 'the past 7 days' : 'the past 30 days'}
             </p>
 
             <div style={{ marginBottom: '16px' }}>
@@ -420,25 +438,54 @@ export default function Dashboard({
               border: '1px solid #e2e8f0'
             }}>
               {(() => {
-                const lastFive = [...sessionHistory].slice(-5);
                 const bars = [];
-                for (let i = 0; i < 5; i++) {
-                  const s = lastFive[i];
-                  if (s) {
-                    bars.push({ label: formattedDate(s.date), val: s.overallScore, active: i === lastFive.length - 1 });
-                  } else {
-                    const fallback = [
-                      { label: 'Practice 1', val: 50 },
-                      { label: 'Practice 2', val: 65 },
-                      { label: 'Practice 3', val: 58 },
-                      { label: 'Practice 4', val: 74 },
-                      { label: 'Practice 5', val: 82 }
-                    ];
-                    bars.push(fallback[i]);
+                const daysToDisplay = timeframe === 'Week' ? 7 : 30;
+                
+                // Generate the last N calendar days chronologically (left to right = oldest to newest)
+                for (let i = daysToDisplay - 1; i >= 0; i--) {
+                  const d = new Date();
+                  d.setDate(d.getDate() - i);
+                  
+                  const labelForQuery = formattedDate(d.toISOString());
+                  // In Week mode show 'Jul 6', in Month mode just show the number '6'
+                  const displayLabel = timeframe === 'Week' ? labelForQuery : d.getDate().toString();
+                  
+                  // Find all sessions that happened on this specific day
+                  const daySessions = sessionHistory.filter(fs => formattedDate(fs.date) === labelForQuery);
+                  let avgDayScore = 0;
+                  
+                  if (daySessions.length > 0) {
+                    avgDayScore = Math.round(daySessions.reduce((sum, fs) => sum + fs.overallScore, 0) / daySessions.length);
+                  }
+                  
+                  bars.push({
+                    label: displayLabel,
+                    val: avgDayScore,
+                    active: false,
+                    showLabel: true, // Now that they are just numbers, all 30 can be shown
+                    sessionCount: daySessions.length
+                  });
+                }
+                
+                // Highlight the most recent day that has a session (reading right to left)
+                for (let i = bars.length - 1; i >= 0; i--) {
+                  if (bars[i].val > 0) {
+                    bars[i].active = true;
+                    break;
                   }
                 }
+                
+                // If there were no sessions at all in the last 7 days, just highlight today (the far right bar)
+                if (!bars.some(b => b.active)) {
+                  bars[bars.length - 1].active = true;
+                }
+
                 return bars.map((bar, i) => (
-                  <div key={i} style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: '15%' }}>
+                  <div 
+                    key={i} 
+                    style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: `${100 / daysToDisplay}%` }}
+                    title={bar.sessionCount > 0 ? `${bar.sessionCount} session${bar.sessionCount > 1 ? 's' : ''} (Avg Score: ${bar.val}%)` : 'No sessions'}
+                  >
                     <div style={{ 
                       width: '100%', 
                       height: '70px',
@@ -453,31 +500,12 @@ export default function Dashboard({
                         transition: 'height 0.4s ease'
                       }} />
                     </div>
-                    <span style={{ fontSize: '9px', color: bar.active ? '#0b4fcd' : '#94a3b8', marginTop: '8px', fontWeight: '700', whiteSpace: 'nowrap' }}>
+                    <span style={{ fontSize: timeframe === 'Week' ? '9px' : '7.5px', color: bar.active ? '#0b4fcd' : '#94a3b8', marginTop: '8px', fontWeight: '700', whiteSpace: 'nowrap', opacity: bar.showLabel ? 1 : 0 }}>
                       {bar.label}
                     </span>
                   </div>
                 ));
               })()}
-            </div>
-          </div>
-
-          {/* Quick Actions Panel */}
-          <div className="glass-card" style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '24px', padding: '24px' }}>
-            <h3 style={{ margin: '0 0 8px 0', fontSize: '16px', color: '#0f172a', fontWeight: '800' }}>
-              <i className="fa-solid fa-file-arrow-up" style={{ color: '#0b4fcd', marginRight: '8px' }}></i> Configure Resume Setup
-            </h3>
-            <p style={{ fontSize: '13px', color: '#64748b', lineHeight: '1.5', margin: '0 0 16px 0', fontWeight: '500' }}>
-              Upload your resume so our LLM parser can extract technical skills and customize mock questions.
-            </p>
-            <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                className="btn btn-secondary" 
-                onClick={() => switchPage('resume')} 
-                style={{ flexGrow: 1, padding: '10px', fontSize: '13.5px', fontWeight: '700', borderRadius: '10px' }}
-              >
-                Upload Resume
-              </button>
             </div>
           </div>
 

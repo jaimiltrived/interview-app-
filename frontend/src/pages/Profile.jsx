@@ -30,9 +30,9 @@ export default function Profile({ userProfile, setUserProfile, onLogout }) {
     ? name.split(' ').map(n => n[0]).join('').toUpperCase().slice(0, 2)
     : 'U';
 
-  const avatarUrl = userProfile.photoUrl || (name === 'Sarah'
-    ? 'https://images.unsplash.com/photo-1494790108377-be9c29b29330?auto=format&fit=crop&q=80&w=200'
-    : 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200');
+  const avatarUrl = userProfile.photoUrl 
+    ? userProfile.photoUrl
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(name || 'User')}&background=0D8ABC&color=fff`;
 
   // Load the latest uploaded resume as default on mount
   useEffect(() => {
@@ -305,7 +305,7 @@ export default function Profile({ userProfile, setUserProfile, onLogout }) {
         <div style={{ flexGrow: 1 }}>
           <h2 style={{ margin: '0 0 6px 0', fontSize: '24px', fontWeight: '800', color: '#0f172a' }}>{name}</h2>
           <div style={{ color: '#0b4fcd', fontWeight: '700', fontSize: '14px', marginBottom: '4px' }}>
-            <i className="fa-solid fa-briefcase"></i> {role || 'Software Engineer'}
+            <i className="fa-solid fa-briefcase"></i> {role || 'Target Role Not Set'}
           </div>
           <div style={{ color: '#64748b', fontSize: '13px', fontWeight: '500' }}>
             <i className="fa-solid fa-envelope"></i> {email}
