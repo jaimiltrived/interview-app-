@@ -41,7 +41,7 @@ const generateFinalReportFallback = ({ avgTech = 75, avgComm = 75, overallScore 
  * Generates a comprehensive final report using pre-computed intermediate answer scores and feedback summaries.
  * Avoids sending heavy raw transcript payloads to lower token consumption and latency.
  */
-const generateFinalReport = async ({ avgTech = 75, avgComm = 75, overallScore = 75, qaPairs = [], roleTarget = 'Software Engineer' }) => {
+const generateFinalReport = async ({ avgTech = 75, avgComm = 75, overallScore = 75, qaPairs = [], roleTarget = 'Software Engineer', candidateName = 'Candidate' }) => {
   const fallbackReport = generateFinalReportFallback({ avgTech, avgComm, overallScore, qaPairs });
 
   // Extract lightweight intermediate evaluation summaries
@@ -77,6 +77,8 @@ const generateFinalReport = async ({ avgTech = 75, avgComm = 75, overallScore = 
     const parsedReport = cleanAndParseJSON(rawResponse, fallbackReport);
 
     return {
+      candidateName: candidateName || 'Candidate',
+      roleTarget: roleTarget || 'Software Engineer',
       overallScore: Number(parsedReport.overallScore || overallScore),
       technicalScore: avgTech,
       communicationScore: avgComm,

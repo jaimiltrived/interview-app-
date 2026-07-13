@@ -2,13 +2,15 @@ const dotenv = require('dotenv');
 const path = require('path');
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
-// Helper to call Google Gemini API as fallback
-const callGeminiFallback = async (prompt, fallbackText) => {
+// Helper to call Google Gemini API directly or as fallback
+const callGeminiFallback = async (prompt, fallbackText, jsonMode = false, temperature = 0.2) => {
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
-    console.warn('[OLLAMA-FALLBACK] Gemini API key not found. Using local static fallback.');
+    console.warn('[GEMINI] API key not found. Using local static fallback.');
     return fallbackText;
   }
+
+  const model = process.env.GEMINI_MODEL || 'gemini-2.0-flash';
 
   try {
     // Workaround for corporate proxy / SSL inspection environments
@@ -16,9 +18,9 @@ const callGeminiFallback = async (prompt, fallbackText) => {
       process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
     }
 
-    console.log('[OLLAMA-FALLBACK] Directing request to Google Gemini API (gemini-2.0-flash)...');
+    console.log(`[GEMINI] Calling Google Gemini API (${model}) [jsonMode: ${jsonMode}, temp: ${temperature}]...`);
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
       {
         method: 'POST',
         headers: {
@@ -26,15 +28,19 @@ const callGeminiFallback = async (prompt, fallbackText) => {
           'X-goog-api-key': apiKey
         },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: prompt }] }]
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: {
+            temperature: temperature,
+            responseMimeType: jsonMode ? 'application/json' : 'text/plain'
+          }
         }),
-        signal: AbortSignal.timeout(8000)
+        signal: AbortSignal.timeout(15000)
       }
     );
 
     if (!response.ok) {
       const errText = await response.text();
-      console.warn(`[OLLAMA-FALLBACK] Gemini API returned status ${response.status}: ${errText}`);
+      console.warn(`[GEMINI WARNING] Gemini API returned status ${response.status}: ${errText}`);
       return fallbackText;
     }
 
@@ -42,20 +48,19 @@ const callGeminiFallback = async (prompt, fallbackText) => {
     const result = data.candidates?.[0]?.content?.parts?.[0]?.text;
     if (result) return result.trim();
   } catch (err) {
-    console.error('[OLLAMA-FALLBACK] Gemini API failed:', err.message);
+    console.error('[GEMINI ERROR] Request failed:', err.message);
   }
   return fallbackText;
 };
 
 /**
- * Sends a prompt to the local LLM server (either vLLM or Ollama).
- * Falls back to Google Gemini if local server is offline/fails.
+ * Sends a prompt to the configured LLM provider (Gemini, vLLM, or Ollama).
  */
 const generateResponse = async (prompt, fallbackText = '', jsonMode = false, temperature = 0.2) => {
-  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+  const provider = (process.env.LLM_PROVIDER || 'gemini').toLowerCase();
 
   if (provider === 'gemini') {
-    return await callGeminiFallback(prompt, fallbackText);
+    return await callGeminiFallback(prompt, fallbackText, jsonMode, temperature);
   }
 
   if (provider === 'vllm') {
@@ -114,7 +119,7 @@ const generateResponse = async (prompt, fallbackText = '', jsonMode = false, tem
       throw new Error('Invalid response structure from vLLM');
     } catch (error) {
       console.warn(`[vLLM WARNING] Connection failed: ${error.message}. Routing to fallback...`);
-      return await callGeminiFallback(prompt, fallbackText);
+      return await callGeminiFallback(prompt, fallbackText, jsonMode, temperature);
     }
   } else {
     // Ollama connection logic
@@ -163,7 +168,7 @@ const generateResponse = async (prompt, fallbackText = '', jsonMode = false, tem
       throw new Error('Invalid response structure from Ollama');
     } catch (error) {
       console.warn(`[OLLAMA WARNING] Connection failed: ${error.message}. Routing to fallback...`);
-      return await callGeminiFallback(prompt, fallbackText);
+      return await callGeminiFallback(prompt, fallbackText, jsonMode, temperature);
     }
   }
 };
