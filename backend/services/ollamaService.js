@@ -27,7 +27,8 @@ const callGeminiFallback = async (prompt, fallbackText) => {
         },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }]
-        })
+        }),
+        signal: AbortSignal.timeout(8000)
       }
     );
 
