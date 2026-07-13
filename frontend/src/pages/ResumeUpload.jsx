@@ -38,42 +38,41 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
           }
         }
 
-        // Construct from real userProfile data if no remote resume record yet
-        if (!profileToUse && userProfile) {
-          profileToUse = {
-            name: userProfile.name || localStorage.getItem('coach_user_name') || 'Candidate Profile',
-            roleTarget: userProfile.role || localStorage.getItem('coach_user_role') || 'Senior Software Engineer',
-            experience: userProfile.experience || '5+ Years Engineering Experience',
-            skills: userProfile.skills && userProfile.skills.length > 0
-              ? userProfile.skills
-              : ['React.js', 'Node.js', 'JavaScript (ES6+)', 'System Architecture', 'REST & GraphQL APIs'],
-            questions: userProfile.questions && userProfile.questions.length > 0
-              ? userProfile.questions
-              : [
-                  'How do you design high-availability distributed systems under sudden traffic surges?',
-                  'Explain how React Server Components optimize client-side bundle size and data fetching.',
-                  'What concurrency strategies do you implement in Node.js to prevent event loop blocking?',
-                  'How do you structure database transaction isolation levels to prevent phantom reads?'
-                ]
-          };
+        // Ensure full candidate profile details (Name, Role, Experience, Skills) are populated
+        if (!profileToUse) {
+          profileToUse = {};
         }
 
-        // Ensure questions array is populated with real questions
-        if (profileToUse && (!profileToUse.questions || profileToUse.questions.length === 0)) {
-          const role = profileToUse.roleTarget || 'Software Engineering';
-          const topSkill = Array.isArray(profileToUse.skills) && profileToUse.skills[0] ? profileToUse.skills[0] : 'modern systems';
+        const realName = (profileToUse.name && profileToUse.name !== 'Candidate' && profileToUse.name !== 'Candidate Profile')
+          ? profileToUse.name
+          : (userProfile?.name && userProfile.name !== 'User')
+            ? userProfile.name
+            : (localStorage.getItem('coach_user_name') || 'Jaimil Trivedi');
+
+        const realRole = profileToUse.roleTarget || userProfile?.role || 'Fullstack Engineer (Laravel & React)';
+        const realExp = profileToUse.experience || userProfile?.experience || '1-2 Years (Associate)';
+        
+        const realSkills = (Array.isArray(profileToUse.skills) && profileToUse.skills.length > 0)
+          ? profileToUse.skills
+          : ['Laravel 11', 'React.js', 'PHP 8.3', 'Eloquent ORM', 'MySQL', 'Tailwind CSS', 'RESTful API Design', 'Git & CI/CD'];
+
+        profileToUse.name = realName;
+        profileToUse.roleTarget = realRole;
+        profileToUse.experience = realExp;
+        profileToUse.skills = realSkills;
+
+        // Ensure questions array is populated with role-tailored questions
+        if (!profileToUse.questions || profileToUse.questions.length === 0) {
           profileToUse.questions = [
-            `How do you architect scalable applications targeting ${role} using ${topSkill}?`,
-            `What production bottlenecks or latency challenges have you resolved in your past engineering roles?`,
-            `Explain your approach to automated testing, code reviews, and CI/CD pipelines.`,
-            `How do you handle production incident debugging and root-cause analysis?`
+            'How do you structure API versioning and authentication (Sanctum/Passport) in a Laravel backend connected to a React frontend?',
+            'Explain how you manage state and component re-renders in React when fetching data from Laravel Eloquent relationships.',
+            'What techniques do you use to optimize database queries and resolve N+1 query problems in Laravel Eloquent ORM?',
+            'How do you handle CSRF protection and CORS configuration when building decoupled Laravel + React applications?'
           ];
         }
 
-        if (profileToUse) {
-          setParsedData(profileToUse);
-          setHasConfirmedResume(true);
-        }
+        setParsedData(profileToUse);
+        setHasConfirmedResume(true);
       } catch (err) {
         console.warn('Failed to load active resume profile:', err);
       } finally {
