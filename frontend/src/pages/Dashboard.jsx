@@ -36,22 +36,22 @@ export default function Dashboard({
 
   // Real-time calculated averages for timeframe
   const avgCommunication = filteredTotal > 0
-    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / filteredTotal)
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.communicationScore || 85), 0) / filteredTotal)
     : (sessionHistory.length > 0
-        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / sessionHistory.length)
-        : 80);
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.communicationScore || 85), 0) / sessionHistory.length)
+        : 85);
 
   const avgTechnical = filteredTotal > 0
-    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / filteredTotal)
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.technicalScore || 64), 0) / filteredTotal)
     : (sessionHistory.length > 0
-        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / sessionHistory.length)
-        : 82);
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.technicalScore || 64), 0) / sessionHistory.length)
+        : 64);
 
   const avgConfidence = filteredTotal > 0
-    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / filteredTotal)
+    ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.avgEyeContact || 82), 0) / filteredTotal)
     : (sessionHistory.length > 0
-        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / sessionHistory.length)
-        : 85);
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.avgEyeContact || 82), 0) / sessionHistory.length)
+        : 82);
 
   const { currentStreak } = calculateStreakStats(sessionHistory);
 
