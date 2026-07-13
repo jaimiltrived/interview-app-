@@ -320,13 +320,22 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
 
       {/* QUESTION BREAKDOWN Section */}
       <div style={{ marginBottom: '30px' }}>
-        <h3 style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', color: '#64748b', marginBottom: '14px' }}>
-          Real-Time Question & Voice Answer Breakdown
-        </h3>
+        {(() => {
+          const activeQuestions = (Array.isArray(report.questions) ? report.questions : []).filter((q, i) => {
+            if (!q || typeof q !== 'string' || q.trim() === '') return false;
+            if (Array.isArray(report.answers) && report.answers.length > 0 && i >= report.answers.length) return false;
+            return true;
+          });
 
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
-          {report.questions.map((q, idx) => {
-            const answer = report.answers && report.answers[idx] ? report.answers[idx] : 'Recorded via real-time voice stream.';
+          return (
+            <>
+              <h3 style={{ fontSize: '12px', fontWeight: '800', textTransform: 'uppercase', letterSpacing: '1px', color: '#64748b', marginBottom: '14px' }}>
+                Real-Time Question & Voice Answer Breakdown ({activeQuestions.length} {activeQuestions.length === 1 ? 'Question' : 'Questions'} Asked)
+              </h3>
+
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '14px' }}>
+                {activeQuestions.map((q, idx) => {
+                  const answer = report.answers && report.answers[idx] ? report.answers[idx] : 'Recorded via real-time voice stream.';
             const passed = isQuestionPass(answer, idx);
             const qAccuracy = (report.questionScores && report.questionScores[idx])
               ? report.questionScores[idx]
@@ -467,7 +476,10 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
               </div>
             );
           })}
-        </div>
+              </div>
+            </>
+          );
+        })()}
       </div>
 
       {/* Action Buttons */}
