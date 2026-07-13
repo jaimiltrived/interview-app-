@@ -520,7 +520,9 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
         wpmHistory: wpmHistoryRef.current,
         eyeContactHistory: eyeHistoryRef.current,
         fillerHistory: fillerHistoryRef.current,
-        expression: confidence
+        expression: confidence,
+        cameraEnabled: Boolean(videoStream),
+        voiceEnabled: Boolean(audioStream)
       };
 
       // 1. Submit session history

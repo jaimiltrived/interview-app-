@@ -162,14 +162,24 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
     return { mistake, rightAnswer };
   };
 
+  const isCameraOff = report.cameraEnabled === false || report.cameraActive === false || report.avgEyeContact === 0;
+  const isVoiceOff = report.voiceEnabled === false || report.avgWpm === 0 || report.voiceAccuracy === 0;
+
   const rawComm = report.communicationScore;
-  const communicationScoreVal = (rawComm === 95 || rawComm === 80 || !rawComm) ? 85 : rawComm;
+  const communicationScoreVal = isVoiceOff
+    ? 0
+    : ((rawComm === 95 || rawComm === 80 || !rawComm) ? 85 : rawComm);
 
   const rawTech = report.technicalScore;
   const technicalScoreVal = (rawTech === 60 || rawTech === 75 || !rawTech) ? 64 : rawTech;
 
-  const confidenceScoreVal = report.confidenceScore || report.avgEyeContact || 82;
-  const overallScoreVal = report.overallScore === 80 ? 78 : (report.overallScore || Math.round((communicationScoreVal + technicalScoreVal + confidenceScoreVal) / 3));
+  const confidenceScoreVal = isCameraOff
+    ? 0
+    : (report.confidenceScore || report.avgEyeContact || 82);
+
+  const overallScoreVal = report.overallScore === 80
+    ? 78
+    : (report.overallScore || Math.round((communicationScoreVal + technicalScoreVal + confidenceScoreVal) / 3));
 
   return (
     <div className="page" style={{ maxWidth: '600px', margin: '0 auto', paddingBottom: '30px' }}>
@@ -286,38 +296,40 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
 
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '12px' }}>
           {/* Card 1: Voice Accuracy */}
-          <div className="glass-card" style={{ padding: '16px', borderRadius: '16px', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+          <div className="glass-card" style={{ padding: '16px', borderRadius: '16px', background: '#ffffff', border: isVoiceOff ? '1px solid #fca5a5' : '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#eff6ff', color: '#0b4fcd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isVoiceOff ? '#fee2e2' : '#eff6ff', color: isVoiceOff ? '#dc2626' : '#0b4fcd', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
                 <i className="fa-solid fa-microphone-lines"></i>
               </div>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Voice Accuracy</div>
-                <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a' }}>
-                  {report.voiceAccuracy || Math.min(98, Math.max(78, communicationScoreVal + 2))}%
+                <div style={{ fontSize: '17px', fontWeight: '800', color: isVoiceOff ? '#dc2626' : '#0f172a' }}>
+                  {isVoiceOff ? '0%' : `${report.voiceAccuracy || Math.min(98, Math.max(78, communicationScoreVal + 2))}%`}
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: '700' }}>
-              <i className="fa-solid fa-check-circle" style={{ marginRight: '4px' }}></i> Clear articulation & vocal resonance
+            <div style={{ fontSize: '12px', color: isVoiceOff ? '#dc2626' : '#16a34a', fontWeight: '700' }}>
+              <i className={isVoiceOff ? "fa-solid fa-triangle-exclamation" : "fa-solid fa-check-circle"} style={{ marginRight: '4px' }}></i>
+              {isVoiceOff ? 'Mic OFF / No Audio Stream Detected' : 'Clear articulation & vocal resonance'}
             </div>
           </div>
 
           {/* Card 2: Camera Eye Contact */}
-          <div className="glass-card" style={{ padding: '16px', borderRadius: '16px', background: '#ffffff', border: '1px solid #e2e8f0' }}>
+          <div className="glass-card" style={{ padding: '16px', borderRadius: '16px', background: '#ffffff', border: isCameraOff ? '1px solid #fca5a5' : '1px solid #e2e8f0' }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
-              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: '#f0fdf4', color: '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
+              <div style={{ width: '36px', height: '36px', borderRadius: '10px', background: isCameraOff ? '#fee2e2' : '#f0fdf4', color: isCameraOff ? '#dc2626' : '#16a34a', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px' }}>
                 <i className="fa-solid fa-video"></i>
               </div>
               <div>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Camera Engagement</div>
-                <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a' }}>
-                  {report.avgEyeContact || 88}%
+                <div style={{ fontSize: '17px', fontWeight: '800', color: isCameraOff ? '#dc2626' : '#0f172a' }}>
+                  {isCameraOff ? '0%' : `${report.avgEyeContact || 88}%`}
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#16a34a', fontWeight: '700' }}>
-              <i className="fa-solid fa-eye" style={{ marginRight: '4px' }}></i> Consistent lens eye contact
+            <div style={{ fontSize: '12px', color: isCameraOff ? '#dc2626' : '#16a34a', fontWeight: '700' }}>
+              <i className={isCameraOff ? "fa-solid fa-triangle-exclamation" : "fa-solid fa-eye"} style={{ marginRight: '4px' }}></i>
+              {isCameraOff ? 'Camera OFF / No Video Stream Detected' : 'Consistent lens eye contact'}
             </div>
           </div>
 
@@ -330,12 +342,12 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
               <div>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Speech Cadence</div>
                 <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a' }}>
-                  {report.avgWpm || 135} WPM
+                  {isVoiceOff ? '0 WPM' : `${report.avgWpm || 135} WPM`}
                 </div>
               </div>
             </div>
-            <div style={{ fontSize: '12px', color: '#64748b', fontWeight: '600' }}>
-              Optimal pacing range (120 - 150 WPM)
+            <div style={{ fontSize: '12px', color: isVoiceOff ? '#dc2626' : '#64748b', fontWeight: '600' }}>
+              {isVoiceOff ? 'Mic Muted / Zero speech cadence detected' : 'Optimal pacing range (120 - 150 WPM)'}
             </div>
           </div>
 
@@ -348,12 +360,12 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
               <div>
                 <div style={{ fontSize: '11px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase' }}>Composure & Fillers</div>
                 <div style={{ fontSize: '17px', fontWeight: '800', color: '#0f172a' }}>
-                  {report.totalFiller ?? 3} Fillers
+                  {isVoiceOff ? '0 Fillers' : `${report.totalFiller ?? 3} Fillers`}
                 </div>
               </div>
             </div>
             <div style={{ fontSize: '12px', color: '#7c3aed', fontWeight: '700' }}>
-              {report.expression || 'Confident & Professional'}
+              {isCameraOff ? 'Camera OFF' : (report.expression || 'Confident & Professional')}
             </div>
           </div>
         </div>
