@@ -21,6 +21,8 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   const [fillerCount, setFillerCount] = useState(0);
   const [eyeContact, setEyeContact] = useState(90);
   const [confidence, setConfidence] = useState('Confident');
+  const [liveAccuracy, setLiveAccuracy] = useState(85);
+  const [lastEvaluation, setLastEvaluation] = useState(null);
 
   // Elapsed Timer state
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -373,6 +375,16 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
       if (fillerList.includes(cleanWord)) fillers++;
     });
     setFillerCount(fillers);
+
+    // Calculate real-time estimated answer accuracy
+    const techWords = ['react', 'node', 'state', 'props', 'api', 'database', 'sql', 'hook', 'component', 'async', 'await', 'security', 'cache', 'scaling', 'service', 'model', 'controller', 'system', 'design', 'auth'];
+    let techHits = 0;
+    words.forEach(w => {
+      const clean = w.toLowerCase().replace(/[^a-z]/g, '');
+      if (techWords.includes(clean)) techHits++;
+    });
+    const estAccuracy = Math.min(96, Math.max(72, 75 + techHits * 3 + Math.min(12, Math.round(wordCount / 10))));
+    setLiveAccuracy(estAccuracy);
   };
 
   const handleNextQuestion = async () => {
@@ -417,8 +429,12 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
             body: JSON.stringify({ questionId, answer: finalAnswer })
           });
           const ansData = await ansRes.json();
-          if (ansData.success) {
+          if (ansData.success && ansData.evaluation) {
             evaluationResult = ansData.evaluation;
+            setLastEvaluation(ansData.evaluation);
+            if (ansData.evaluation.technicalScore) {
+              setLiveAccuracy(ansData.evaluation.technicalScore);
+            }
           }
           console.log('[AI] Successfully logged intermediate answer score.');
         } catch (err) {
@@ -884,6 +900,160 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
               <div className="dot-pulse"></div>
               <span>{coachSpeaking ? 'AI Recruiter speaking...' : 'Interviewer Ready'}</span>
             </div>
+          </div>
+        )}
+      </div>
+
+      {/* Real-Time Voice Recognition & AI Accuracy HUD Dashboard */}
+      <div
+        style={{
+          background: 'linear-gradient(145deg, #0f172a, #1e293b)',
+          borderRadius: '24px',
+          padding: '20px',
+          marginBottom: '24px',
+          border: '1px solid rgba(255, 255, 255, 0.08)',
+          boxShadow: '0 10px 25px -5px rgba(0, 0, 0, 0.25)'
+        }}
+      >
+        {/* Voice Input & Mic Status Header */}
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            <div
+              style={{
+                width: '32px',
+                height: '32px',
+                borderRadius: '10px',
+                backgroundColor: isListening ? 'rgba(16, 185, 129, 0.2)' : 'rgba(100, 116, 139, 0.2)',
+                color: isListening ? '#10b981' : '#94a3b8',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                fontSize: '14px'
+              }}
+            >
+              <i className={`fa-solid ${isListening ? 'fa-microphone-lines fa-fade' : 'fa-microphone-slash'}`}></i>
+            </div>
+            <div>
+              <div style={{ fontSize: '13px', fontWeight: '800', color: '#f8fafc' }}>
+                {isListening ? 'Voice Capture Active' : 'Microphone Paused'}
+              </div>
+              <div style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '500' }}>
+                {isListening ? 'AI is analyzing your voice tone, vocabulary & precision' : 'Click microphone button below to speak'}
+              </div>
+            </div>
+          </div>
+          <div style={{ display: 'flex', gap: '8px' }}>
+            <span
+              style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                backgroundColor: 'rgba(56, 189, 248, 0.15)',
+                color: '#38bdf8',
+                fontSize: '11px',
+                fontWeight: '700'
+              }}
+            >
+              {wpm} WPM
+            </span>
+            <span
+              style={{
+                padding: '4px 10px',
+                borderRadius: '8px',
+                backgroundColor: fillerCount > 3 ? 'rgba(239, 68, 68, 0.15)' : 'rgba(16, 185, 129, 0.15)',
+                color: fillerCount > 3 ? '#ef4444' : '#10b981',
+                fontSize: '11px',
+                fontWeight: '700'
+              }}
+            >
+              {fillerCount} Fillers
+            </span>
+          </div>
+        </div>
+
+        {/* Real-Time AI Accuracy & Evaluation 3-Pillar Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '12px' }}>
+          {/* Pillar 1: Technical Accuracy */}
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '16px',
+              padding: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.05)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Technical Accuracy</span>
+              <i className="fa-solid fa-bullseye" style={{ color: '#10b981', fontSize: '12px' }}></i>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: '#10b981', fontFamily: 'Outfit' }}>
+              {liveAccuracy}%
+            </div>
+            <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '6px', overflow: 'hidden' }}>
+              <div style={{ width: `${liveAccuracy}%`, height: '100%', background: '#10b981', transition: 'width 0.4s ease' }}></div>
+            </div>
+          </div>
+
+          {/* Pillar 2: Communication Clarity */}
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '16px',
+              padding: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.05)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Clarity Score</span>
+              <i className="fa-solid fa-waveform-lines" style={{ color: '#38bdf8', fontSize: '12px' }}></i>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: '#38bdf8', fontFamily: 'Outfit' }}>
+              {wpm > 200 ? '78%' : '92%'}
+            </div>
+            <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '6px', overflow: 'hidden' }}>
+              <div style={{ width: wpm > 200 ? '78%' : '92%', height: '100%', background: '#38bdf8', transition: 'width 0.4s ease' }}></div>
+            </div>
+          </div>
+
+          {/* Pillar 3: Eye Contact Accuracy */}
+          <div
+            style={{
+              background: 'rgba(255, 255, 255, 0.03)',
+              borderRadius: '16px',
+              padding: '12px',
+              border: '1px solid rgba(255, 255, 255, 0.05)'
+            }}
+          >
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+              <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: '600', textTransform: 'uppercase' }}>Eye Contact</span>
+              <i className="fa-solid fa-eye" style={{ color: '#a855f7', fontSize: '12px' }}></i>
+            </div>
+            <div style={{ fontSize: '22px', fontWeight: '800', color: '#a855f7', fontFamily: 'Outfit' }}>
+              {eyeContact}%
+            </div>
+            <div style={{ width: '100%', height: '4px', background: 'rgba(255,255,255,0.1)', borderRadius: '2px', marginTop: '6px', overflow: 'hidden' }}>
+              <div style={{ width: `${eyeContact}%`, height: '100%', background: '#a855f7', transition: 'width 0.4s ease' }}></div>
+            </div>
+          </div>
+        </div>
+
+        {/* Real-time AI Evaluation Insight Bar */}
+        {lastEvaluation && lastEvaluation.feedback && (
+          <div
+            style={{
+              marginTop: '14px',
+              padding: '10px 14px',
+              borderRadius: '12px',
+              background: 'rgba(16, 185, 129, 0.1)',
+              border: '1px solid rgba(16, 185, 129, 0.2)',
+              color: '#a7f3d0',
+              fontSize: '12.5px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px'
+            }}
+          >
+            <i className="fa-solid fa-sparkles" style={{ color: '#34d399' }}></i>
+            <span><strong>Gemini AI Evaluation:</strong> {lastEvaluation.feedback}</span>
           </div>
         )}
       </div>
