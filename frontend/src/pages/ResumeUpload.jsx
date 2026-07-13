@@ -43,31 +43,24 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
           profileToUse = {};
         }
 
-        const realName = (profileToUse.name && profileToUse.name !== 'Candidate' && profileToUse.name !== 'Candidate Profile')
-          ? profileToUse.name
-          : (userProfile?.name && userProfile.name !== 'User')
-            ? userProfile.name
-            : (localStorage.getItem('coach_user_name') || 'Jaimil Trivedi');
-
-        const realRole = profileToUse.roleTarget || userProfile?.role || 'Fullstack Engineer (Laravel & React)';
-        const realExp = profileToUse.experience || userProfile?.experience || '1-2 Years (Associate)';
-        
-        const realSkills = (Array.isArray(profileToUse.skills) && profileToUse.skills.length > 0)
+        profileToUse.name = profileToUse.name || userProfile?.name || localStorage.getItem('coach_user_name') || 'Candidate';
+        profileToUse.roleTarget = profileToUse.roleTarget || userProfile?.role || 'Software Engineer';
+        profileToUse.experience = profileToUse.experience || userProfile?.experience || 'Not Specified';
+        profileToUse.skills = (Array.isArray(profileToUse.skills) && profileToUse.skills.length > 0)
           ? profileToUse.skills
-          : ['Laravel 11', 'React.js', 'PHP 8.3', 'Eloquent ORM', 'MySQL', 'Tailwind CSS', 'RESTful API Design', 'Git & CI/CD'];
+          : (userProfile?.skills && userProfile.skills.length > 0
+              ? userProfile.skills
+              : ['JavaScript', 'React.js', 'Node.js', 'SQL']);
 
-        profileToUse.name = realName;
-        profileToUse.roleTarget = realRole;
-        profileToUse.experience = realExp;
-        profileToUse.skills = realSkills;
-
-        // Ensure questions array is populated with role-tailored questions
+        // Ensure questions array is dynamically populated from skills/role if empty
         if (!profileToUse.questions || profileToUse.questions.length === 0) {
+          const role = profileToUse.roleTarget;
+          const topSkill = profileToUse.skills?.[0] || 'your core tech stack';
           profileToUse.questions = [
-            'How do you structure API versioning and authentication (Sanctum/Passport) in a Laravel backend connected to a React frontend?',
-            'Explain how you manage state and component re-renders in React when fetching data from Laravel Eloquent relationships.',
-            'What techniques do you use to optimize database queries and resolve N+1 query problems in Laravel Eloquent ORM?',
-            'How do you handle CSRF protection and CORS configuration when building decoupled Laravel + React applications?'
+            `How do you architect scalable applications targeting ${role} using ${topSkill}?`,
+            `What production bottlenecks or latency challenges have you resolved in your past engineering roles?`,
+            `Explain your approach to automated testing, code reviews, and CI/CD pipelines.`,
+            `How do you handle production incident debugging and root-cause analysis?`
           ];
         }
 
@@ -314,20 +307,20 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
               <h3><i className="fa-solid fa-clipboard-user"></i> Candidate Profile</h3>
               <div className="detail-row">
                 <div className="detail-label">Name</div>
-                <div className="detail-val">{parsedData.name || userProfile.name || 'Jaimil Trivedi'}</div>
+                <div className="detail-val">{parsedData.name || userProfile?.name || 'Candidate'}</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Inferred Target Role</div>
-                <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget || 'Fullstack Engineer (Laravel & React)'}</div>
+                <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget || userProfile?.role || 'Software Engineer'}</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Experience Rating</div>
-                <div className="detail-val" style={{ fontWeight: '600', color: '#0f172a' }}>1-2 Years (Associate)</div>
+                <div className="detail-val" style={{ fontWeight: '600', color: '#0f172a' }}>{parsedData.experience || userProfile?.experience || 'Not Specified'}</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Skills Extracted</div>
                 <div className="badge-container" style={{ marginTop: '5px' }}>
-                  {(parsedData.skills || []).map((skill, i) => (
+                  {(parsedData.skills && parsedData.skills.length > 0 ? parsedData.skills : (userProfile?.skills || [])).map((skill, i) => (
                     <span key={i} className="badge primary">{skill}</span>
                   ))}
                 </div>
