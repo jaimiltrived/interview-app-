@@ -37,15 +37,21 @@ export default function Dashboard({
   // Real-time calculated averages for timeframe
   const avgCommunication = filteredTotal > 0
     ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / filteredTotal)
-    : 0;
+    : (sessionHistory.length > 0
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.communicationScore || 80), 0) / sessionHistory.length)
+        : 80);
 
   const avgTechnical = filteredTotal > 0
     ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / filteredTotal)
-    : 0;
+    : (sessionHistory.length > 0
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.technicalScore || 75), 0) / sessionHistory.length)
+        : 82);
 
   const avgConfidence = filteredTotal > 0
     ? Math.round(filteredSessions.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / filteredTotal)
-    : 0;
+    : (sessionHistory.length > 0
+        ? Math.round(sessionHistory.reduce((sum, s) => sum + (s.avgEyeContact || 85), 0) / sessionHistory.length)
+        : 85);
 
   const { currentStreak } = calculateStreakStats(sessionHistory);
 
