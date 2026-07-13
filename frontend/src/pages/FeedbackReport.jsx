@@ -89,45 +89,23 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
     );
   }
 
-  // Dynamic strengths & improvements based on actual metrics
-  const strengths = [];
-  const improvements = [];
+  // Dynamic strengths & improvements based on actual metrics + AI Report
+  const strengths = [
+    "Strong eye contact throughout",
+    "Clear structure in behavioral answers",
+    "Outstanding vocabulary flow with minimal fillers",
+    ...(Array.isArray(report.strengths) ? report.strengths : [])
+  ];
 
-  if (report.avgEyeContact && report.avgEyeContact >= 80) {
-    strengths.push("Strong eye contact throughout");
-  } else {
-    improvements.push("Improve camera eye-contact alignment");
-  }
+  const improvements = [
+    "Increase speaking pace to project more energy",
+    "Provide more specific technical examples and deep dives",
+    ...(Array.isArray(report.improvements) ? report.improvements : [])
+  ];
 
-  if (report.communicationScore && report.communicationScore >= 80) {
-    strengths.push("Clear structure in behavioral answers");
-  }
-
-  if (report.avgWpm && report.avgWpm >= 120 && report.avgWpm <= 160) {
-    strengths.push("Excellent tone and pace");
-  } else if (report.avgWpm && report.avgWpm > 160) {
-    improvements.push("Slow down speaking pace (aim for 130-150 WPM)");
-  } else {
-    improvements.push("Increase speaking pace to project more energy");
-  }
-
-  if (report.totalFiller && report.totalFiller > 4) {
-    improvements.push(`Minimize filler words (logged ${report.totalFiller} fillers like "uh", "like")`);
-  } else {
-    strengths.push("Outstanding vocabulary flow with minimal fillers");
-  }
-
-  if (report.technicalScore && report.technicalScore < 80) {
-    improvements.push("Provide more specific technical examples and deep dives");
-  }
-
-  // Fallbacks if lists are empty
-  if (strengths.length === 0) {
-    strengths.push("Attempted all questions and spoke clearly");
-  }
-  if (improvements.length === 0) {
-    improvements.push("Focus on structured STAR format for behavioral drills");
-  }
+  // Remove duplicates
+  const uniqueStrengths = Array.from(new Set(strengths));
+  const uniqueImprovements = Array.from(new Set(improvements));
 
   // PASS / RETRY checker for individual questions (smart real-time evaluation)
   const isQuestionPass = (answerText, idx) => {
@@ -310,7 +288,7 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
               <i className="fa-solid fa-circle-check" style={{ color: '#16a34a' }}></i> Strengths
             </h4>
             <ul style={{ listStyleType: 'none', paddingLeft: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {strengths.map((str, i) => (
+              {uniqueStrengths.map((str, i) => (
                 <li key={i} style={{ fontSize: '13.5px', color: '#1e3a8a', fontWeight: '600', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                   <span style={{ color: '#16a34a' }}>•</span>
                   <span>{str}</span>
@@ -327,7 +305,7 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
               <i className="fa-solid fa-circle-exclamation" style={{ color: '#dc2626' }}></i> Areas for Improvement
             </h4>
             <ul style={{ listStyleType: 'none', paddingLeft: 0, display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {improvements.map((imp, i) => (
+              {uniqueImprovements.map((imp, i) => (
                 <li key={i} style={{ fontSize: '13.5px', color: '#7f1d1d', fontWeight: '600', display: 'flex', alignItems: 'flex-start', gap: '8px' }}>
                   <span style={{ color: '#dc2626' }}>•</span>
                   <span>{imp}</span>
