@@ -53,27 +53,27 @@ const generateFinalReport = async ({ avgTech = 75, avgComm = 75, overallScore = 
     feedback: pair.feedback || 'Satisfactory explanation provided.'
   }));
 
-  const prompt = `You are a Principal Software Engineer and Executive Technical Recruiter.
-  Analyze the candidate's performance for the target role "${roleTarget}" based on precomputed average scores and intermediate evaluation points:
-  - Technical Average Score: ${avgTech}/100
-  - Communication Average Score: ${avgComm}/100
-  - Overall Performance Score: ${overallScore}/100
+  const prompt = `You are a Principal Software Architect and Executive Technical Recruiter.
+Evaluate the candidate "${candidateName}" for the target role "${roleTarget}" with FULL ANALYTICAL ACCURACY based on precomputed evaluation data:
+- Technical Average Score: ${avgTech}/100
+- Communication Average Score: ${avgComm}/100
+- Overall Performance Score: ${overallScore}/100
 
-  Intermediate Answer Evaluations:
-  ${JSON.stringify(evaluationSummaries, null, 2)}
+Intermediate Answer Evaluations & Question Feedback:
+${JSON.stringify(evaluationSummaries, null, 2)}
 
-  Generate and return ONLY a JSON response format matching exactly this schema:
-  {
-    "overallScore": ${overallScore},
-    "strengths": ["Clear strength point 1", "Clear strength point 2"],
-    "weaknesses": ["Actionable area for improvement 1", "Actionable area for improvement 2"],
-    "resumeSuggestions": ["ATS formatting improvement tip", "Keyword inclusion recommendation"],
-    "learningPath": ["Recommended technology or concept to study 1", "Recommended architecture topic 2"]
-  }
-  Only output valid JSON. Do not include markdown wraps, code block indicators, or conversational text.`;
+Synthesize a high-precision executive report and return ONLY a JSON object matching exactly this schema:
+{
+  "overallScore": ${overallScore},
+  "strengths": ["Specific, verified technical strength demonstrated by the candidate", "Communication or architectural clarity point"],
+  "weaknesses": ["Exact engineering or conceptual area needing deeper mastery", "Concrete gap observed during interview answers"],
+  "resumeSuggestions": ["Targeted ATS keyword enhancement for ${roleTarget}", "Measurable impact formatting recommendation"],
+  "learningPath": ["Advanced architectural topic or pattern tailored to gaps", "Recommended framework or performance optimization concept"]
+}
+Strict requirement: Output only valid JSON. Ensure points are highly specific to the candidate's actual answers and target role.`;
 
   try {
-    const rawResponse = await generateResponse(prompt, JSON.stringify(fallbackReport), true);
+    const rawResponse = await generateResponse(prompt, JSON.stringify(fallbackReport), true, 0.1);
     const parsedReport = cleanAndParseJSON(rawResponse, fallbackReport);
 
     return {
