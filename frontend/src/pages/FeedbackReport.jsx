@@ -90,22 +90,24 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
   }
 
   // Dynamic strengths & improvements based on actual metrics + AI Report
-  const strengths = [
-    "Strong eye contact throughout",
-    "Clear structure in behavioral answers",
-    "Outstanding vocabulary flow with minimal fillers",
-    ...(Array.isArray(report.strengths) ? report.strengths : [])
-  ];
+  const dynamicStrengths = (Array.isArray(report.strengths) && report.strengths.length > 0)
+    ? report.strengths
+    : [
+        (report.communicationScore || 85) >= 80 ? "Strong vocal cadence and articulation throughout" : "Clear pacing throughout response delivery",
+        (report.confidenceScore || report.avgEyeContact || 82) >= 80 ? "Consistently high eye contact and camera engagement" : "Focused visual presence",
+        "Structured problem-solving across behavioral and technical scenarios"
+      ];
 
-  const improvements = [
-    "Increase speaking pace to project more energy",
-    "Provide more specific technical examples and deep dives",
-    ...(Array.isArray(report.improvements) ? report.improvements : [])
-  ];
+  const dynamicImprovements = (Array.isArray(report.improvements) && report.improvements.length > 0)
+    ? report.improvements
+    : [
+        (report.technicalScore || 64) < 75 ? "Provide deeper technical examples and concrete architecture trade-offs" : "Continue quantifying measurable KPI outcomes",
+        (report.communicationScore || 85) < 85 ? "Reduce speech hesitation and filler words" : "Elaborate further on advanced production edge cases"
+      ];
 
   // Remove duplicates
-  const uniqueStrengths = Array.from(new Set(strengths));
-  const uniqueImprovements = Array.from(new Set(improvements));
+  const uniqueStrengths = Array.from(new Set(dynamicStrengths));
+  const uniqueImprovements = Array.from(new Set(dynamicImprovements));
 
   // PASS / RETRY checker for individual questions (smart real-time evaluation)
   const isQuestionPass = (answerText, idx) => {
@@ -326,9 +328,11 @@ export default function FeedbackReport({ selectedId, sessionHistory, switchPage 
           {report.questions.map((q, idx) => {
             const answer = report.answers && report.answers[idx] ? report.answers[idx] : 'Recorded via real-time voice stream.';
             const passed = isQuestionPass(answer, idx);
-            const qAccuracy = passed
-              ? Math.min(98, Math.max(76, Math.round((report.technicalScore || 82) + ((idx % 3) * 5 - 2))))
-              : 52;
+            const qAccuracy = (report.questionScores && report.questionScores[idx])
+              ? report.questionScores[idx]
+              : (passed
+                  ? Math.min(96, Math.max(74, Math.round((technicalScoreVal || 64) + ((idx * 7) % 18))))
+                  : 48);
             const diag = getQuestionDiagnosis(q, answer, passed);
 
             return (
