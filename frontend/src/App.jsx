@@ -21,12 +21,17 @@ export default function App() {
   
   const [currentPage, setCurrentPage] = useState('dashboard');
   const [userProfile, setUserProfile] = useState({
-    name: localStorage.getItem('coach_user_name') || 'User',
-    role: localStorage.getItem('coach_user_role') || '',
+    name: localStorage.getItem('coach_user_name') || 'Jaimil Trivedi',
+    role: localStorage.getItem('coach_user_role') || 'Fullstack Engineer (Laravel & React)',
     userRole: localStorage.getItem('coach_user_system_role') || 'candidate',
-    skills: ['React.js', 'JavaScript', 'CSS Grid', 'System Design'],
-    experience: '5 Years',
-    questions: []
+    skills: ['Laravel 11', 'React.js', 'PHP 8.3', 'Eloquent ORM', 'MySQL', 'Tailwind CSS', 'RESTful API Design', 'Git & CI/CD'],
+    experience: '1-2 Years (Associate)',
+    questions: [
+      'How do you structure API versioning and authentication (Sanctum/Passport) in a Laravel backend connected to a React frontend?',
+      'Explain how you manage state and component re-renders in React when fetching data from Laravel Eloquent relationships.',
+      'What techniques do you use to optimize database queries and resolve N+1 query problems in Laravel Eloquent ORM?',
+      'How do you handle CSRF protection and CORS configuration when building decoupled Laravel + React applications?'
+    ]
   });
   
   const [selectedReportId, setSelectedReportId] = useState(null);

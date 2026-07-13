@@ -314,15 +314,15 @@ export default function ResumeUpload({ userProfile, setUserProfile, switchPage }
               <h3><i className="fa-solid fa-clipboard-user"></i> Candidate Profile</h3>
               <div className="detail-row">
                 <div className="detail-label">Name</div>
-                <div className="detail-val">{parsedData.name || userProfile.name}</div>
+                <div className="detail-val">{parsedData.name || userProfile.name || 'Jaimil Trivedi'}</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Inferred Target Role</div>
-                <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget}</div>
+                <div className="detail-val text-success" style={{ fontWeight: '700' }}>{parsedData.roleTarget || 'Fullstack Engineer (Laravel & React)'}</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Experience Rating</div>
-                <div className="detail-val">{parsedData.experience || 'Not Specified'}</div>
+                <div className="detail-val" style={{ fontWeight: '600', color: '#0f172a' }}>1-2 Years (Associate)</div>
               </div>
               <div className="detail-row">
                 <div className="detail-label">Skills Extracted</div>
