@@ -1,5 +1,6 @@
 const dotenv = require('dotenv');
-dotenv.config();
+const path = require('path');
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
 
 // Helper to call Google Gemini API as fallback
 const callGeminiFallback = async (prompt, fallbackText) => {
@@ -10,12 +11,20 @@ const callGeminiFallback = async (prompt, fallbackText) => {
   }
 
   try {
-    console.log('[OLLAMA-FALLBACK] Directing request to Google Gemini API fallback...');
+    // Workaround for corporate proxy / SSL inspection environments
+    if (process.env.NODE_ENV === 'development') {
+      process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+    }
+
+    console.log('[OLLAMA-FALLBACK] Directing request to Google Gemini API (gemini-2.0-flash)...');
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${apiKey}`,
       {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey
+        },
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }]
         })
@@ -23,7 +32,9 @@ const callGeminiFallback = async (prompt, fallbackText) => {
     );
 
     if (!response.ok) {
-      throw new Error(`Gemini API returned status ${response.status}`);
+      const errText = await response.text();
+      console.warn(`[OLLAMA-FALLBACK] Gemini API returned status ${response.status}: ${errText}`);
+      return fallbackText;
     }
 
     const data = await response.json();
@@ -40,7 +51,11 @@ const callGeminiFallback = async (prompt, fallbackText) => {
  * Falls back to Google Gemini if local server is offline/fails.
  */
 const generateResponse = async (prompt, fallbackText = '', jsonMode = false, temperature = 0.2) => {
-  const provider = process.env.LLM_PROVIDER || 'ollama';
+  const provider = (process.env.LLM_PROVIDER || 'ollama').toLowerCase();
+
+  if (provider === 'gemini') {
+    return await callGeminiFallback(prompt, fallbackText);
+  }
 
   if (provider === 'vllm') {
     const host = process.env.VLLM_HOST || 'http://localhost:8000';
