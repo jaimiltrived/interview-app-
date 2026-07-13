@@ -13,6 +13,8 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   const [activeResume, setActiveResume] = useState(null);
   const [fetchingResume, setFetchingResume] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [isTransitioning, setIsTransitioning] = useState(false);
+  const [transitionText, setTransitionText] = useState('');
 
   // Real-time Metrics State
   const [wpm, setWpm] = useState(0);
@@ -374,6 +376,9 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
   };
 
   const handleNextQuestion = async () => {
+    if (isTransitioning) return;
+    setIsTransitioning(true);
+
     // Stop recording
     if (isListening && recognitionRef.current) {
       setIsListening(false);
@@ -392,75 +397,82 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
     const nextIdx = currentIdx + 1;
     const TOTAL_QUESTIONS = 5;
 
-    // Call intermediate evaluation endpoint
-    let evaluationResult = null;
-    const questionObj = questions[currentIdx];
-    const questionId = questionObj?.id;
-    const token = localStorage.getItem('coach_jwt_token');
+    setTransitionText(nextIdx < TOTAL_QUESTIONS ? 'Evaluating Answer & Adapting Next Question...' : 'Synthesizing Comprehensive AI Report...');
 
-    if (questionId && token) {
-      try {
-        const ansRes = await fetch('/api/interview/answer', {
-          method: 'POST',
-          headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-          },
-          body: JSON.stringify({ questionId, answer: finalAnswer })
-        });
-        const ansData = await ansRes.json();
-        if (ansData.success) {
-          evaluationResult = ansData.evaluation;
-        }
-        console.log('[AI] Successfully logged intermediate answer score.');
-      } catch (err) {
-        console.warn('[AI] Failed to log intermediate answer score:', err.message);
-      }
-    }
+    try {
+      // Call intermediate evaluation endpoint
+      let evaluationResult = null;
+      const questionObj = questions[currentIdx];
+      const questionId = questionObj?.id;
+      const token = localStorage.getItem('coach_jwt_token');
 
-    if (nextIdx < TOTAL_QUESTIONS) {
-      if (nextIdx < questions.length) {
-        loadQuestionPrompt(nextIdx, questions[nextIdx]);
-      } else {
-        // Fetch adaptive next question smoothly
+      if (questionId && token) {
         try {
-          const genRes = await fetch('/api/interview/next-question', {
+          const ansRes = await fetch('/api/interview/answer', {
             method: 'POST',
             headers: { 
               'Content-Type': 'application/json',
               'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({
-              stepIndex: nextIdx,
-              roleTarget: activeResume?.roleTarget || userProfile?.role || 'Software Engineer',
-              skills: activeResume?.skills || [],
-              projects: activeResume?.projects || [],
-              previousQuestion: typeof questionObj === 'object' ? questionObj.question : questionObj,
-              previousAnswer: finalAnswer,
-              previousEvaluation: evaluationResult
-            })
+            body: JSON.stringify({ questionId, answer: finalAnswer })
           });
-          const genData = await genRes.json();
-          if (genData.success && genData.data) {
-            setQuestions(prev => [...prev, genData.data]);
-            loadQuestionPrompt(nextIdx, genData.data);
-            return;
+          const ansData = await ansRes.json();
+          if (ansData.success) {
+            evaluationResult = ansData.evaluation;
           }
+          console.log('[AI] Successfully logged intermediate answer score.');
         } catch (err) {
-          console.warn('Adaptive question fetch fallback:', err);
+          console.warn('[AI] Failed to log intermediate answer score:', err.message);
         }
-
-        // Fallback smooth question if API was unavailable
-        const fallbackNext = {
-          question: `Can you walk me through how you design for scalability and maintainability in your core projects?`,
-          type: 'technical'
-        };
-        setQuestions(prev => [...prev, fallbackNext]);
-        loadQuestionPrompt(nextIdx, fallbackNext);
       }
-    } else {
-      // Completed last question, submit results smoothly to backend
-      submitSessionResults();
+
+      if (nextIdx < TOTAL_QUESTIONS) {
+        if (nextIdx < questions.length) {
+          loadQuestionPrompt(nextIdx, questions[nextIdx]);
+        } else {
+          // Fetch adaptive next question smoothly
+          try {
+            const genRes = await fetch('/api/interview/next-question', {
+              method: 'POST',
+              headers: { 
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+              },
+              body: JSON.stringify({
+                stepIndex: nextIdx,
+                roleTarget: activeResume?.roleTarget || userProfile?.role || 'Software Engineer',
+                skills: activeResume?.skills || [],
+                projects: activeResume?.projects || [],
+                previousQuestion: typeof questionObj === 'object' ? questionObj.question : questionObj,
+                previousAnswer: finalAnswer,
+                previousEvaluation: evaluationResult
+              })
+            });
+            const genData = await genRes.json();
+            if (genData.success && genData.data) {
+              setQuestions(prev => [...prev, genData.data]);
+              loadQuestionPrompt(nextIdx, genData.data);
+              return;
+            }
+          } catch (err) {
+            console.warn('Adaptive question fetch fallback:', err);
+          }
+
+          // Fallback smooth question if API was unavailable
+          const fallbackNext = {
+            question: `Can you walk me through how you design for scalability and maintainability in your core projects?`,
+            type: 'technical'
+          };
+          setQuestions(prev => [...prev, fallbackNext]);
+          loadQuestionPrompt(nextIdx, fallbackNext);
+        }
+      } else {
+        // Completed last question, submit results smoothly to backend
+        await submitSessionResults();
+      }
+    } finally {
+      setIsTransitioning(false);
+      setTransitionText('');
     }
   };
 
@@ -913,26 +925,65 @@ export default function InterviewRoom({ userProfile, switchPage, onFinish }) {
           {/* Next Question Pill button */}
           <button
             onClick={handleNextQuestion}
+            disabled={isTransitioning}
             style={{
               height: '54px',
               borderRadius: '16px',
               padding: '0 24px',
-              backgroundColor: '#eff6ff',
+              backgroundColor: isTransitioning ? '#0b4fcd' : (currentIdx >= 4 ? '#10b981' : '#eff6ff'),
               border: 'none',
-              color: '#0b4fcd',
+              color: (isTransitioning || currentIdx >= 4) ? '#ffffff' : '#0b4fcd',
               fontSize: '14.5px',
               fontWeight: '700',
               display: 'flex',
               alignItems: 'center',
               gap: '10px',
-              cursor: 'pointer',
+              cursor: isTransitioning ? 'not-allowed' : 'pointer',
+              boxShadow: isTransitioning ? '0 4px 14px rgba(11, 79, 205, 0.35)' : 'none',
               transition: 'all 0.2s ease'
             }}
           >
-            <span>{(!liveTranscript && !isListening) ? 'Skip Question' : 'Next Question'}</span>
-            <i className={`fa-solid ${(!liveTranscript && !isListening) ? 'fa-forward-step' : 'fa-arrow-right'}`}></i>
+            {isTransitioning ? (
+              <>
+                <i className="fa-solid fa-circle-notch fa-spin"></i>
+                <span>{currentIdx >= 4 ? 'Generating Report...' : 'Evaluating AI...'}</span>
+              </>
+            ) : (
+              <>
+                <span>
+                  {currentIdx >= 4
+                    ? 'Finish & View AI Report'
+                    : (!liveTranscript && !isListening)
+                    ? 'Skip Question'
+                    : 'Next Question'}
+                </span>
+                <i className={`fa-solid ${currentIdx >= 4 ? 'fa-wand-magic-sparkles' : (!liveTranscript && !isListening) ? 'fa-forward-step' : 'fa-arrow-right'}`}></i>
+              </>
+            )}
           </button>
         </div>
+
+        {/* Transition Status Notification Banner */}
+        {isTransitioning && (
+          <div
+            style={{
+              padding: '12px 16px',
+              borderRadius: '12px',
+              background: 'linear-gradient(135deg, #1e293b, #0f172a)',
+              color: '#38bdf8',
+              fontSize: '13px',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '10px',
+              border: '1px solid rgba(56, 189, 248, 0.2)',
+              boxShadow: '0 4px 12px rgba(0,0,0,0.15)'
+            }}
+          >
+            <i className="fa-solid fa-microchip fa-bounce"></i>
+            <span>{transitionText || 'AI Processing...'}</span>
+          </div>
+        )}
 
         {/* End Session full-width button */}
         <button
