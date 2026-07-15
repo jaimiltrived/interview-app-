@@ -1,8 +1,60 @@
 import React, { useState, useEffect } from 'react';
 
+// Reference guide data compiler based on category & title
+const getReferenceGuide = (q) => {
+  const category = q.category?.toUpperCase() || 'TECHNICAL';
+  if (category === 'BEHAVIORAL') {
+    return {
+      strategy: 'STAR Method (Situation, Task, Action, Result)',
+      points: [
+        'Briefly outline the context/challenge you faced.',
+        'Define your responsibility and the goal you set.',
+        'Describe the exact actions you took to resolve it.',
+        'Highlight the quantifiable positive outcome and your learnings.'
+      ],
+      sample: 'e.g. "In my previous project, we faced a tight deadline. I aligned the team by introducing daily check-ins, resulting in delivering the feature 2 days early."'
+    };
+  } else if (category === 'TECHNICAL') {
+    return {
+      strategy: 'Structure: Define -> Explain Mechanics -> Give Tradeoffs/Use Case',
+      points: [
+        'Clearly define the technology, pattern, or concept.',
+        'Explain the core mechanism (how it executes, memory footprint, etc.).',
+        'Mention alternatives and when to choose this approach over others.',
+        'Cite a real-world scenario where you implemented it.'
+      ],
+      sample: 'e.g. "Explain the event loop model, callbacks queue, microtasks vs macrotasks, and how promises mitigate callback hell."'
+    };
+  } else if (category === 'CASE STUDY') {
+    return {
+      strategy: 'High-Level Design -> Low-Level Components -> Scalability Bottlenecks',
+      points: [
+        'Define the requirements, scale (QPS), and data constraints.',
+        'Sketch the overall block architecture (API Gateway, services, database).',
+        'Deep dive into specific components (e.g. indexing, caching, queues).',
+        'Discuss replication, load balancing, sharding, and latency optimization.'
+      ],
+      sample: 'e.g. "Use WebSockets for real-time updates, Redis geospatial indexes for location tracking, and horizontal database sharding."'
+    };
+  } else {
+    return {
+      strategy: 'People-First Leadership & Collaborative Problem Solving',
+      points: [
+        'Emphasize empathy, active listening, and open communication channels.',
+        'Describe how you align individual motivations with team business objectives.',
+        'Provide clear, measurable performance indicators (KPIs) and continuous feedback.',
+        'Detail your approach to mentoring and conflict resolution frameworks.'
+      ],
+      sample: 'e.g. "Focus on constructive coaching, setting clear timelines, and checking in weekly to support progress."'
+    };
+  }
+};
+
 export default function QuestionLibrary({ userProfile, startInterviewWithQuestions }) {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTopic, setSelectedTopic] = useState('All Topics');
+  const [selectedLevel, setSelectedLevel] = useState('All Levels');
+  const [expandedId, setExpandedId] = useState(null); // Accordion state for references
   const [loading, setLoading] = useState(false);
   const [questions, setQuestions] = useState([
     {
@@ -61,11 +113,41 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
   const [newDuration, setNewDuration] = useState('15 mins');
   const [newLevel, setNewLevel] = useState('Medium');
 
+  // Pagination states
+  const [currentPage, setCurrentPage] = useState(1);
+  const [itemsPerPage] = useState(5);
+
+  // Reset page to 1 when filters change
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [searchQuery, selectedTopic, selectedLevel]);
+
   const topics = ['All Topics', 'Technical', 'Behavioral', 'Leadership', 'Case Study'];
+  const levels = ['All Levels', 'Easy', 'Medium', 'Hard'];
 
   // Dynamically load tailored questions using Qwen 2.5 on mount
   useEffect(() => {
     const generateCustomLibrary = async () => {
+      // 1. Check local cache first to prevent load times on subsequent page loads
+      try {
+        const cachedQ = localStorage.getItem('coach_cached_library_questions');
+        const cachedRole = localStorage.getItem('coach_cached_library_role');
+        const cachedSkills = localStorage.getItem('coach_cached_library_skills');
+
+        const currentRole = userProfile.role || 'Software Engineer';
+        const currentSkills = JSON.stringify(userProfile.skills || []);
+
+        if (cachedQ && cachedRole === currentRole && cachedSkills === currentSkills) {
+          const parsed = JSON.parse(cachedQ);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setQuestions(parsed);
+            return;
+          }
+        }
+      } catch (e) {
+        console.warn('Cache error:', e);
+      }
+
       setLoading(true);
       try {
         const token = localStorage.getItem('coach_jwt_token');
@@ -143,6 +225,14 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
 
           if (flatList.length > 0) {
             setQuestions(flatList);
+            // Save to cache
+            try {
+              localStorage.setItem('coach_cached_library_questions', JSON.stringify(flatList));
+              localStorage.setItem('coach_cached_library_role', userProfile.role || 'Software Engineer');
+              localStorage.setItem('coach_cached_library_skills', JSON.stringify(userProfile.skills || []));
+            } catch (cacheErr) {
+              console.warn('Failed to save to local cache:', cacheErr);
+            }
           }
         }
       } catch (err) {
@@ -161,8 +251,18 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
                           q.category.toLowerCase().includes(searchQuery.toLowerCase());
     const matchesTopic = selectedTopic === 'All Topics' || 
                          q.category.toLowerCase() === selectedTopic.toLowerCase();
-    return matchesSearch && matchesTopic;
+    const matchesLevel = selectedLevel === 'All Levels' || 
+                         (q.level && q.level.toLowerCase() === selectedLevel.toLowerCase());
+    return matchesSearch && matchesTopic && matchesLevel;
   });
+
+  const totalItems = filteredQuestions.length;
+  const totalPages = Math.ceil(totalItems / itemsPerPage) || 1;
+  const activePage = Math.min(currentPage, totalPages);
+  
+  const indexOfLastItem = activePage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentQuestions = filteredQuestions.slice(indexOfFirstItem, indexOfLastItem);
 
   const getCategoryBadgeClass = (category) => {
     switch (category) {
@@ -241,119 +341,223 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
         />
       </div>
 
-      {/* Topics Filters */}
-      <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap', marginBottom: '30px' }}>
-        {topics.map((topic) => {
-          const isActive = selectedTopic === topic;
-          return (
-            <button
-              key={topic}
-              onClick={() => setSelectedTopic(topic)}
-              style={{
-                padding: '10px 20px',
-                borderRadius: '30px',
-                border: isActive ? 'none' : '1px solid #e2e8f0',
-                background: isActive ? '#0b4fcd' : '#ffffff',
-                color: isActive ? '#ffffff' : '#64748b',
-                fontWeight: '700',
-                fontSize: '13px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                boxShadow: isActive ? '0 4px 12px rgba(11, 79, 205, 0.25)' : 'none'
-              }}
-            >
-              {topic}
-            </button>
-          );
-        })}
+      {/* Dropdown Filters Row */}
+      <div style={{ display: 'flex', gap: '16px', marginBottom: '30px', flexWrap: 'wrap' }}>
+        {/* Topic Dropdown */}
+        <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+          <i className="fa-solid fa-filter" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#0b4fcd', fontSize: '14px' }}></i>
+          <select
+            value={selectedTopic}
+            onChange={(e) => setSelectedTopic(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '14px 40px 14px 44px',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+              fontWeight: '700',
+              color: '#334155',
+              backgroundColor: '#ffffff',
+              outline: 'none',
+              cursor: 'pointer',
+              appearance: 'none',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.01)'
+            }}
+          >
+            {topics.map(t => (
+              <option key={t} value={t}>{t === 'All Topics' ? 'All Topics' : `${t} Questions`}</option>
+            ))}
+          </select>
+          <i className="fa-solid fa-chevron-down" style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '12px', pointerEvents: 'none' }}></i>
+        </div>
+
+        {/* Level Dropdown */}
+        <div style={{ position: 'relative', flex: 1, minWidth: '200px' }}>
+          <i className="fa-solid fa-signal" style={{ position: 'absolute', left: '16px', top: '50%', transform: 'translateY(-50%)', color: '#10b981', fontSize: '14px' }}></i>
+          <select
+            value={selectedLevel}
+            onChange={(e) => setSelectedLevel(e.target.value)}
+            style={{
+              width: '100%',
+              padding: '14px 40px 14px 44px',
+              borderRadius: '12px',
+              border: '1px solid #e2e8f0',
+              fontSize: '14px',
+              fontWeight: '700',
+              color: '#334155',
+              backgroundColor: '#ffffff',
+              outline: 'none',
+              cursor: 'pointer',
+              appearance: 'none',
+              boxShadow: '0 2px 10px rgba(0,0,0,0.01)'
+            }}
+          >
+            {levels.map(l => (
+              <option key={l} value={l}>{l === 'All Levels' ? 'All Difficulty Levels' : `${l} Difficulty`}</option>
+            ))}
+          </select>
+          <i className="fa-solid fa-chevron-down" style={{ position: 'absolute', right: '16px', top: '50%', transform: 'translateY(-50%)', color: '#94a3b8', fontSize: '12px', pointerEvents: 'none' }}></i>
+        </div>
       </div>
 
       {/* Cards List */}
       <div style={{ display: 'flex', flexDirection: 'column', gap: '16px' }}>
-        {filteredQuestions.length === 0 ? (
+        {currentQuestions.length === 0 ? (
           <div style={{ background: '#ffffff', border: '1px solid #e2e8f0', borderRadius: '16px', padding: '40px', textAlign: 'center', color: '#64748b' }}>
             No questions found matching your criteria.
           </div>
         ) : (
-          filteredQuestions.map((q) => (
-            <div
-              key={q.id}
-              onClick={() => startPractice(q.title)}
-              className="glass-card"
-              style={{
-                display: 'flex',
-                flexDirection: 'column',
-                justifyContent: 'space-between',
-                padding: '24px',
-                background: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '24px',
-                cursor: 'pointer',
-                transition: 'all 0.2s ease',
-                position: 'relative'
-              }}
-            >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-                <span className={`badge ${getCategoryBadgeClass(q.category)}`}>
-                  {q.category}
-                </span>
-                <span style={{ fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
-                  <i className="fa-regular fa-clock" style={{ fontSize: '13px' }}></i> {q.duration}
-                </span>
+          currentQuestions.map((q) => {
+            const isExpanded = expandedId === q.id;
+            return (
+              <div
+                key={q.id}
+                onClick={() => setExpandedId(isExpanded ? null : q.id)}
+                className="glass-card"
+                style={{
+                  display: 'flex',
+                  flexDirection: 'column',
+                  justifyContent: 'space-between',
+                  padding: '24px',
+                  background: '#ffffff',
+                  border: '1px solid #e2e8f0',
+                  borderRadius: '24px',
+                  cursor: 'pointer',
+                  transition: 'all 0.2s ease',
+                  position: 'relative'
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
+                  <span className={`badge ${getCategoryBadgeClass(q.category)}`}>
+                    {q.category}
+                  </span>
+                  <span style={{ fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+                    <i className="fa-regular fa-clock" style={{ fontSize: '13px' }}></i> {q.duration}
+                  </span>
+                </div>
+
+                <h3 style={{ fontSize: '20px', color: '#0f172a', fontWeight: '800', lineHeight: '1.4', marginBottom: '24px', paddingRight: '40px' }}>
+                  {q.title}
+                </h3>
+
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: '700' }}>
+                    <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: q.levelColor, display: 'inline-block' }}></span>
+                    {q.level}
+                  </span>
+
+                  <button
+                    style={{
+                      width: '36px',
+                      height: '36px',
+                      borderRadius: '50%',
+                      backgroundColor: isExpanded ? '#eff6ff' : '#f1f5f9',
+                      border: 'none',
+                      color: isExpanded ? '#0b4fcd' : '#64748b',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer',
+                      fontSize: '14px',
+                      transition: 'all 0.2s ease'
+                    }}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setExpandedId(isExpanded ? null : q.id);
+                    }}
+                  >
+                    <i className={`fa-solid ${isExpanded ? 'fa-chevron-up' : 'fa-chevron-down'}`}></i>
+                  </button>
+                </div>
+
+                {isExpanded && (
+                  <div 
+                    style={{ 
+                      marginTop: '20px', 
+                      padding: '20px', 
+                      borderRadius: '16px', 
+                      background: '#f8fafc', 
+                      border: '1px solid #e2e8f0',
+                      fontSize: '13.5px',
+                      lineHeight: '1.6',
+                      color: '#334155',
+                      animation: 'slideDown 0.25s ease-out'
+                    }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
+                      <i className="fa-solid fa-book" style={{ color: '#0b4fcd', fontSize: '14px' }}></i>
+                      <strong style={{ color: '#0f172a', fontSize: '14.5px', fontFamily: 'Outfit' }}>Interviewer Reference Guide</strong>
+                    </div>
+                    
+                    <div style={{ marginBottom: '12px' }}>
+                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Recommended Strategy</span>
+                      <span style={{ color: '#0f172a', fontWeight: '600' }}>{getReferenceGuide(q).strategy}</span>
+                    </div>
+
+                    <div style={{ marginBottom: '12px' }}>
+                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Key Focus Points</span>
+                      <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                        {getReferenceGuide(q).points.map((pt, idx) => (
+                          <li key={idx}>{pt}</li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div>
+                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Sample Response Lead</span>
+                      <span style={{ fontStyle: 'italic', color: '#475569' }}>{getReferenceGuide(q).sample}</span>
+                    </div>
+                  </div>
+                )}
               </div>
-
-              <h3 style={{ fontSize: '20px', color: '#0f172a', fontWeight: '800', lineHeight: '1.4', marginBottom: '24px', paddingRight: '40px' }}>
-                {q.title}
-              </h3>
-
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', color: '#64748b', fontWeight: '700' }}>
-                  <span style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: q.levelColor, display: 'inline-block' }}></span>
-                  {q.level}
-                </span>
-
-                <button
-                  style={{
-                    width: '36px',
-                    height: '36px',
-                    borderRadius: '50%',
-                    backgroundColor: '#eff6ff',
-                    border: 'none',
-                    color: '#0b4fcd',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    transition: 'all 0.2s ease'
-                  }}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    startPractice(q.title);
-                  }}
-                >
-                  <i className="fa-solid fa-arrow-right"></i>
-                </button>
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
       {/* Pagination Bar */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '30px' }}>
-        <button style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <i className="fa-solid fa-chevron-left" style={{ fontSize: '11px' }}></i>
-        </button>
-        <button style={{ width: '36px', height: '36px', border: 'none', borderRadius: '10px', background: '#0b4fcd', color: '#ffffff', fontWeight: '700', cursor: 'pointer' }}>1</button>
-        <button style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: '#64748b', fontWeight: '600', cursor: 'pointer' }}>2</button>
-        <button style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: '#64748b', fontWeight: '600', cursor: 'pointer' }}>3</button>
-        <span style={{ color: '#94a3b8', padding: '0 4px' }}>...</span>
-        <button style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: '#64748b', fontWeight: '600', cursor: 'pointer' }}>12</button>
-        <button style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: '#64748b', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-          <i className="fa-solid fa-chevron-right" style={{ fontSize: '11px' }}></i>
-        </button>
-      </div>
+      {totalPages > 1 && (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '8px', marginTop: '30px' }}>
+          <button 
+            disabled={activePage === 1}
+            onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: activePage === 1 ? '#cbd5e1' : '#64748b', cursor: activePage === 1 ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <i className="fa-solid fa-chevron-left" style={{ fontSize: '11px' }}></i>
+          </button>
+          
+          {Array.from({ length: totalPages }, (_, idx) => idx + 1).map((pg) => {
+            const isActive = activePage === pg;
+            return (
+              <button
+                key={pg}
+                onClick={() => setCurrentPage(pg)}
+                style={{
+                  width: '36px',
+                  height: '36px',
+                  border: isActive ? 'none' : '1px solid #e2e8f0',
+                  borderRadius: '10px',
+                  background: isActive ? '#0b4fcd' : '#ffffff',
+                  color: isActive ? '#ffffff' : '#64748b',
+                  fontWeight: isActive ? '700' : '600',
+                  cursor: 'pointer'
+                }}
+              >
+                {pg}
+              </button>
+            );
+          })}
+          
+          <button 
+            disabled={activePage === totalPages}
+            onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            style={{ width: '36px', height: '36px', border: '1px solid #e2e8f0', borderRadius: '10px', background: '#ffffff', color: activePage === totalPages ? '#cbd5e1' : '#64748b', cursor: activePage === totalPages ? 'not-allowed' : 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <i className="fa-solid fa-chevron-right" style={{ fontSize: '11px' }}></i>
+          </button>
+        </div>
+      )}
 
       {/* Floating Action Button */}
       <button
@@ -474,6 +678,19 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
           </div>
         </div>
       )}
+      {/* Keyframe Animations */}
+      <style>{`
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-8px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+      `}</style>
     </div>
   );
 }

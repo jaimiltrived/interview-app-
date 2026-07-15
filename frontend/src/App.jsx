@@ -136,25 +136,15 @@ export default function App() {
     setCurrentPage(pageId);
   };
 
-  const handleStartDirectInterview = async () => {
-    try {
-      const res = await fetch('/api/resume/latest', {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success && data.resume) {
-        setCurrentPage('setup');
-      } else {
-        toast.error('Please upload a resume first to customize technical mock questions matching your experience level!');
-        setCurrentPage('resume');
-      }
-    } catch (err) {
-      setCurrentPage('resume');
-    }
+  const handleStartDirectInterview = () => {
+    setCurrentPage('setup');
   };
 
-  const handleStartInterviewWithQuestions = (questionsList) => {
-    setUserProfile(prev => ({ ...prev, questions: questionsList }));
+  const handleStartInterviewWithQuestions = (questions) => {
+    setUserProfile(prev => ({
+      ...prev,
+      questions: typeof questions === 'string' ? [questions] : questions
+    }));
     setCurrentPage('interview');
   };
 
@@ -219,6 +209,8 @@ export default function App() {
       <AdminDashboard 
         userProfile={userProfile}
         onExitAdmin={() => setCurrentPage('dashboard')}
+        onLogout={handleLogout}
+        switchPage={setCurrentPage}
       />
     );
   }
@@ -230,39 +222,43 @@ export default function App() {
       <div className="glow-orb orb-2"></div>
 
       {/* Mobile Sticky Header */}
-      <header className="app-header">
-        <div className="app-header-logo" onClick={() => handlePageSwitch('dashboard')}>
-          <div className="app-header-logo-icon">
-            <i className="fa-solid fa-bars" style={{ fontSize: '18px', marginRight: '8px', color: '#64748b' }}></i>
+      {currentPage !== 'interview' && (
+        <header className="app-header">
+          <div className="app-header-logo" onClick={() => handlePageSwitch('dashboard')}>
+            <div className="app-header-logo-icon">
+              <i className="fa-solid fa-bars" style={{ fontSize: '18px', marginRight: '8px', color: '#64748b' }}></i>
+            </div>
+            <span className="app-header-logo-text">PrepFlow</span>
           </div>
-          <span className="app-header-logo-text">PrepFlow</span>
-        </div>
-        <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
-          <button 
-            onClick={() => handlePageSwitch('resume')}
-            style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
-            title="Upload Resume / Setup"
-          >
-            <i className="fa-solid fa-file-arrow-up"></i>
-          </button>
-          <img 
-            className="avatar-img" 
-            src={avatarUrl} 
-            alt="User profile" 
-            onClick={() => handlePageSwitch('resume')}
-            style={{ cursor: 'pointer' }}
-          />
-        </div>
-      </header>
+          <div className="app-header-actions" style={{ display: 'flex', alignItems: 'center', gap: '12px' }}>
+            <button 
+              onClick={() => handlePageSwitch('resume')}
+              style={{ background: 'none', border: 'none', color: '#64748b', fontSize: '18px', cursor: 'pointer', display: 'flex', alignItems: 'center', padding: '4px' }}
+              title="Upload Resume / Setup"
+            >
+              <i className="fa-solid fa-file-arrow-up"></i>
+            </button>
+            <img 
+              className="avatar-img" 
+              src={avatarUrl} 
+              alt="User profile" 
+              onClick={() => handlePageSwitch('resume')}
+              style={{ cursor: 'pointer' }}
+            />
+          </div>
+        </header>
+      )}
 
       <div className="app-container">
         {/* Sidebar Left for Desktop viewports */}
-        <Sidebar 
-          currentPage={currentPage} 
-          switchPage={handlePageSwitch} 
-          userProfile={userProfile} 
-          onLogout={handleLogout}
-        />
+        {currentPage !== 'interview' && (
+          <Sidebar 
+            currentPage={currentPage} 
+            switchPage={handlePageSwitch} 
+            userProfile={userProfile} 
+            onLogout={handleLogout}
+          />
+        )}
 
         {/* Content Right */}
         <main className="main-content">
@@ -341,43 +337,45 @@ export default function App() {
         </main>
 
         {/* Bottom Navigation for Mobile viewports */}
-        <nav className="bottom-nav">
-          <a 
-            className={`bottom-nav-item ${currentPage === 'dashboard' ? 'active' : ''}`}
-            onClick={() => handlePageSwitch('dashboard')}
-          >
-            <i className="fa-solid fa-table-cells-large"></i>
-            <span>Dashboard</span>
-          </a>
-          <a 
-            className={`bottom-nav-item ${currentPage === 'library' ? 'active' : ''}`}
-            onClick={() => handlePageSwitch('library')}
-          >
-            <i className="fa-solid fa-book-open"></i>
-            <span>Library</span>
-          </a>
-          <a 
-            className={`bottom-nav-item ${currentPage === 'resume' || currentPage === 'interview' ? 'active' : ''}`}
-            onClick={() => handlePageSwitch('resume')}
-          >
-            <i className="fa-solid fa-circle-play"></i>
-            <span>Practice</span>
-          </a>
-          <a 
-            className={`bottom-nav-item ${currentPage === 'report' ? 'active' : ''}`}
-            onClick={() => handlePageSwitch('report')}
-          >
-            <i className="fa-solid fa-square-poll-vertical"></i>
-            <span>Reports</span>
-          </a>
-          <a 
-            className={`bottom-nav-item ${currentPage === 'activity' ? 'active' : ''}`}
-            onClick={() => handlePageSwitch('activity')}
-          >
-            <i className="fa-solid fa-fire"></i>
-            <span>Activity</span>
-          </a>
-        </nav>
+        {currentPage !== 'interview' && (
+          <nav className="bottom-nav">
+            <a 
+              className={`bottom-nav-item ${currentPage === 'dashboard' ? 'active' : ''}`}
+              onClick={() => handlePageSwitch('dashboard')}
+            >
+              <i className="fa-solid fa-table-cells-large"></i>
+              <span>Dashboard</span>
+            </a>
+            <a 
+              className={`bottom-nav-item ${currentPage === 'library' ? 'active' : ''}`}
+              onClick={() => handlePageSwitch('library')}
+            >
+              <i className="fa-solid fa-book-open"></i>
+              <span>Library</span>
+            </a>
+            <a 
+              className={`bottom-nav-item ${currentPage === 'resume' || currentPage === 'interview' ? 'active' : ''}`}
+              onClick={() => handlePageSwitch('resume')}
+            >
+              <i className="fa-solid fa-circle-play"></i>
+              <span>Practice</span>
+            </a>
+            <a 
+              className={`bottom-nav-item ${currentPage === 'report' ? 'active' : ''}`}
+              onClick={() => handlePageSwitch('report')}
+            >
+              <i className="fa-solid fa-square-poll-vertical"></i>
+              <span>Reports</span>
+            </a>
+            <a 
+              className={`bottom-nav-item ${currentPage === 'activity' ? 'active' : ''}`}
+              onClick={() => handlePageSwitch('activity')}
+            >
+              <i className="fa-solid fa-fire"></i>
+              <span>Activity</span>
+            </a>
+          </nav>
+        )}
       </div>
     </ErrorBoundary>
   );

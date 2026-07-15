@@ -1,6 +1,19 @@
 import React, { useState, useEffect } from 'react';
 
-export default function AdminDashboard({ userProfile, onExitAdmin }) {
+export default function AdminDashboard({ userProfile, onExitAdmin, onLogout, switchPage }) {
+  const initials = userProfile.name
+    ? userProfile.name
+        .split(' ')
+        .map((n) => n[0])
+        .join('')
+        .toUpperCase()
+        .slice(0, 2)
+    : 'AD';
+
+  const avatarUrl = userProfile.photoUrl 
+    ? userProfile.photoUrl 
+    : `https://ui-avatars.com/api/?name=${encodeURIComponent(userProfile.name || 'Admin')}&background=3B82F6&color=fff`;
+
   const [activeTab, setActiveTab] = useState('dashboard');
   const [contentSubTab, setContentSubTab] = useState('roles');
   
@@ -79,6 +92,7 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
   const [sessionSortMode, setSessionSortMode] = useState('default');
   const [filterRoleDropdown, setFilterRoleDropdown] = useState('All Roles');
   const [filterDate, setFilterDate] = useState('');
+  const [selectedIndustryFilter, setSelectedIndustryFilter] = useState('All');
   
   // Real-time Session Action States
   const [activeScorecard, setActiveScorecard] = useState(null);
@@ -302,7 +316,7 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
   const handleOpenModal = (type, item = null) => {
     setModalType(type);
     setSelectedItem(item);
-    setFormData(item ? { ...item } : {});
+    setFormData(item ? { ...item } : (type === 'skill' ? { industry: 'IT & Software' } : {}));
     setModalOpen(true);
   };
 
@@ -661,7 +675,7 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
     <div style={{ display: 'flex', minHeight: '100vh', background: '#f8fafc', width: '100vw', margin: 0, fontFamily: 'Plus Jakarta Sans, sans-serif' }}>
       
       {/* 1. STANDALONE ADMIN SIDEBAR (DARK & PREMIUM) */}
-      <aside style={{ width: '260px', background: '#0f172a', display: 'flex', flexDirection: 'column', color: '#cbd5e1', borderRight: '1px solid #1e293b', flexShrink: 0 }}>
+      <aside style={{ width: '260px', height: '100vh', position: 'sticky', top: 0, background: '#0f172a', display: 'flex', flexDirection: 'column', color: '#cbd5e1', borderRight: '1px solid #1e293b', flexShrink: 0 }}>
         
         {/* Sidebar Header Brand */}
         <div style={{ padding: '24px', display: 'flex', alignItems: 'center', gap: '10px', borderBottom: '1px solid #1e293b' }}>
@@ -722,13 +736,66 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
           })}
         </nav>
 
+        {/* Admin User Profile Section */}
+        <div 
+          onClick={() => switchPage('profile')}
+          style={{ 
+            padding: '16px 20px', 
+            borderTop: '1px solid #1e293b', 
+            display: 'flex', 
+            alignItems: 'center', 
+            gap: '12px', 
+            overflow: 'hidden',
+            cursor: 'pointer',
+            transition: 'background 0.2s'
+          }}
+          onMouseEnter={e => e.currentTarget.style.backgroundColor = '#1e293b'}
+          onMouseLeave={e => e.currentTarget.style.backgroundColor = 'transparent'}
+          title="User Profile & Settings"
+        >
+          {avatarUrl ? (
+            <img 
+              src={avatarUrl} 
+              alt={userProfile.name} 
+              style={{ width: '38px', height: '38px', borderRadius: '50%', objectFit: 'cover', border: '1px solid #334155', flexShrink: 0 }}
+            />
+          ) : (
+            <div style={{ width: '38px', height: '38px', borderRadius: '50%', backgroundColor: '#3b82f6', color: '#ffffff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontWeight: '700', fontSize: '14px', flexShrink: 0 }}>
+              {initials}
+            </div>
+          )}
+          <div style={{ overflow: 'hidden', whiteSpace: 'nowrap', textOverflow: 'ellipsis', flexGrow: 1 }}>
+            <div style={{ fontSize: '13.5px', fontWeight: '700', color: '#ffffff', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {userProfile.name}
+            </div>
+            <div style={{ fontSize: '11px', color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis' }}>
+              {userProfile.userRole === 'super_admin' ? 'Super Administrator' : 'Administrator'}
+            </div>
+          </div>
+        </div>
+
         {/* Exit Admin / View Site Button */}
-        <div style={{ padding: '16px', borderTop: '1px solid #1e293b' }}>
+        <div style={{ padding: '16px', borderTop: '1px solid #1e293b', display: 'flex', flexDirection: 'column', gap: '10px' }}>
           <button 
             onClick={onExitAdmin} 
             style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'linear-gradient(135deg, #10b981, #059669)', color: '#ffffff', border: 'none', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s ease' }}
           >
             <i className="fa-solid fa-laptop-code"></i> View Site & Take Exam
+          </button>
+
+          <button 
+            onClick={onLogout} 
+            style={{ width: '100%', padding: '10px', borderRadius: '10px', background: 'transparent', border: '1px solid #ef4444', color: '#fca5a5', fontWeight: '700', fontSize: '13px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px', transition: 'all 0.2s ease' }}
+            onMouseEnter={e => {
+              e.currentTarget.style.background = '#ef4444';
+              e.currentTarget.style.color = '#ffffff';
+            }}
+            onMouseLeave={e => {
+              e.currentTarget.style.background = 'transparent';
+              e.currentTarget.style.color = '#fca5a5';
+            }}
+          >
+            <i className="fa-solid fa-right-from-bracket"></i> Logout
           </button>
         </div>
 
@@ -1526,14 +1593,32 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
               <h3 style={{ fontSize: '18px', fontWeight: '800' }}>Skills Matrix</h3>
               <button onClick={() => handleOpenModal('skill')} className="btn btn-primary" style={{ padding: '6px 12px', fontSize: '13px' }}>Add Skill</button>
             </div>
+
+            {/* Filter Dropdown */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '24px' }}>
+              <span style={{ fontSize: '13.5px', fontWeight: '700', color: '#475569' }}>Filter by Industry:</span>
+              <select
+                value={selectedIndustryFilter}
+                onChange={e => setSelectedIndustryFilter(e.target.value)}
+                style={{ padding: '8px 12px', borderRadius: '10px', border: '1px solid #cbd5e1', fontSize: '13px', outline: 'none', background: '#ffffff' }}
+              >
+                <option value="All">All Industries</option>
+                <option value="IT & Software">IT & Software</option>
+                <option value="Finance">Finance</option>
+                <option value="Healthcare">Healthcare</option>
+                <option value="Marketing & Sales">Marketing & Sales</option>
+              </select>
+            </div>
             
             <div style={{ display: 'flex', gap: '10px', flexWrap: 'wrap' }}>
-              {skills.map(sk => (
-                <div key={sk.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '6px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: '700' }}>
-                  <span>{sk.name}</span>
-                  <i onClick={() => handleDelete('skill', sk.id)} className="fa-solid fa-xmark" style={{ cursor: 'pointer', color: 'var(--error)' }}></i>
-                </div>
-              ))}
+              {skills
+                .filter(sk => selectedIndustryFilter === 'All' || sk.industry === selectedIndustryFilter)
+                .map(sk => (
+                  <div key={sk.id} style={{ display: 'flex', alignItems: 'center', gap: '8px', background: '#eff6ff', border: '1px solid #bfdbfe', color: '#1e40af', padding: '6px 12px', borderRadius: '12px', fontSize: '13px', fontWeight: '700' }}>
+                    <span>{sk.name}</span>
+                    <i onClick={() => handleDelete('skill', sk.id)} className="fa-solid fa-xmark" style={{ cursor: 'pointer', color: 'var(--error)' }}></i>
+                  </div>
+                ))}
             </div>
           </div>
         )}
@@ -1954,15 +2039,31 @@ export default function AdminDashboard({ userProfile, onExitAdmin }) {
               )}
 
               {modalType === 'skill' && (
-                <div>
-                  <label className="detail-label" style={{ display: 'block', marginBottom: '4px' }}>Skill Title</label>
-                  <input
-                    type="text"
-                    value={formData.name || ''}
-                    onChange={e => setFormData({ ...formData, name: e.target.value })}
-                    style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
-                    required
-                  />
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                  <div>
+                    <label className="detail-label" style={{ display: 'block', marginBottom: '4px' }}>Skill Title</label>
+                    <input
+                      type="text"
+                      value={formData.name || ''}
+                      onChange={e => setFormData({ ...formData, name: e.target.value })}
+                      style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0' }}
+                      required
+                    />
+                  </div>
+                  <div>
+                    <label className="detail-label" style={{ display: 'block', marginBottom: '4px' }}>Industry / Classification</label>
+                    <select
+                      value={formData.industry || 'IT & Software'}
+                      onChange={e => setFormData({ ...formData, industry: e.target.value })}
+                      style={{ width: '100%', padding: '10px', borderRadius: '8px', border: '1px solid #e2e8f0', background: '#ffffff', outline: 'none' }}
+                      required
+                    >
+                      <option value="IT & Software">IT & Software</option>
+                      <option value="Finance">Finance</option>
+                      <option value="Healthcare">Healthcare</option>
+                      <option value="Marketing & Sales">Marketing & Sales</option>
+                    </select>
+                  </div>
                 </div>
               )}
 
