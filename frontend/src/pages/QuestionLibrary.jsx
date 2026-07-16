@@ -110,7 +110,7 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
   const [showAddModal, setShowAddModal] = useState(false);
   const [newTitle, setNewTitle] = useState('');
   const [newCategory, setNewCategory] = useState('TECHNICAL');
-  const [newDuration, setNewDuration] = useState('15 mins');
+  const [newAnswer, setNewAnswer] = useState('');
   const [newLevel, setNewLevel] = useState('Medium');
 
   // Pagination states
@@ -285,14 +285,24 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
     const newQ = {
       id: 'q_' + Date.now(),
       category: newCategory.toUpperCase(),
-      duration: newDuration,
       title: newTitle,
       level: newLevel,
-      levelColor: levelColor
+      levelColor: levelColor,
+      answer: newAnswer
     };
 
-    setQuestions([newQ, ...questions]);
+    const updatedQuestions = [newQ, ...questions];
+    setQuestions(updatedQuestions);
+    try {
+      localStorage.setItem('coach_cached_library_questions', JSON.stringify(updatedQuestions));
+      localStorage.setItem('coach_cached_library_role', userProfile.role || 'Software Engineer');
+      localStorage.setItem('coach_cached_library_skills', JSON.stringify(userProfile.skills || []));
+    } catch (cacheErr) {
+      console.warn('Failed to save to local cache:', cacheErr);
+    }
+
     setNewTitle('');
+    setNewAnswer('');
     setShowAddModal(false);
   };
 
@@ -431,9 +441,11 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
                   <span className={`badge ${getCategoryBadgeClass(q.category)}`}>
                     {q.category}
                   </span>
-                  <span style={{ fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
-                    <i className="fa-regular fa-clock" style={{ fontSize: '13px' }}></i> {q.duration}
-                  </span>
+                  {q.duration && (
+                    <span style={{ fontSize: '13px', color: '#64748b', display: 'flex', alignItems: 'center', gap: '6px', fontWeight: '600' }}>
+                      <i className="fa-regular fa-clock" style={{ fontSize: '13px' }}></i> {q.duration}
+                    </span>
+                  )}
                 </div>
 
                 <h3 style={{ fontSize: '20px', color: '#0f172a', fontWeight: '800', lineHeight: '1.4', marginBottom: '24px', paddingRight: '40px' }}>
@@ -487,27 +499,39 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
                   >
                     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '12px' }}>
                       <i className="fa-solid fa-book" style={{ color: '#0b4fcd', fontSize: '14px' }}></i>
-                      <strong style={{ color: '#0f172a', fontSize: '14.5px', fontFamily: 'Outfit' }}>Interviewer Reference Guide</strong>
+                      <strong style={{ color: '#0f172a', fontSize: '14.5px', fontFamily: 'Outfit' }}>
+                        {q.answer ? 'Expected Answer / Reference Guide' : 'Interviewer Reference Guide'}
+                      </strong>
                     </div>
                     
-                    <div style={{ marginBottom: '12px' }}>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Recommended Strategy</span>
-                      <span style={{ color: '#0f172a', fontWeight: '600' }}>{getReferenceGuide(q).strategy}</span>
-                    </div>
+                    {q.answer ? (
+                      <div style={{ marginBottom: '12px' }}>
+                        <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Expected Answer</span>
+                        <span style={{ color: '#0f172a', fontWeight: '500', whiteSpace: 'pre-wrap', display: 'block' }}>{q.answer}</span>
+                      </div>
+                    ) : (
+                      <>
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Recommended Strategy</span>
+                          <span style={{ color: '#0f172a', fontWeight: '600' }}>{getReferenceGuide(q).strategy}</span>
+                        </div>
 
-                    <div style={{ marginBottom: '12px' }}>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Key Focus Points</span>
-                      <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
-                        {getReferenceGuide(q).points.map((pt, idx) => (
-                          <li key={idx}>{pt}</li>
-                        ))}
-                      </ul>
-                    </div>
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '6px' }}>Key Focus Points</span>
+                          <ul style={{ margin: 0, paddingLeft: '18px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                            {getReferenceGuide(q).points.map((pt, idx) => (
+                              <li key={idx}>{pt}</li>
+                            ))}
+                          </ul>
+                        </div>
 
-                    <div>
-                      <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Sample Response Lead</span>
-                      <span style={{ fontStyle: 'italic', color: '#475569' }}>{getReferenceGuide(q).sample}</span>
-                    </div>
+                        <div style={{ marginBottom: '12px' }}>
+                          <span style={{ display: 'block', fontSize: '12px', fontWeight: '800', color: '#64748b', textTransform: 'uppercase', marginBottom: '4px' }}>Sample Response Lead</span>
+                          <span style={{ fontStyle: 'italic', color: '#475569' }}>{getReferenceGuide(q).sample}</span>
+                        </div>
+                      </>
+                    )}
+
                   </div>
                 )}
               </div>
@@ -646,14 +670,24 @@ export default function QuestionLibrary({ userProfile, startInterviewWithQuestio
               </div>
 
               <div>
-                <label className="detail-label" style={{ marginBottom: '6px', display: 'block' }}>Duration</label>
-                <input
-                  type="text"
+                <label className="detail-label" style={{ marginBottom: '6px', display: 'block' }}>Expected Answer</label>
+                <textarea
                   required
-                  value={newDuration}
-                  onChange={(e) => setNewDuration(e.target.value)}
-                  placeholder="e.g. 15 mins"
-                  style={{ width: '100%', padding: '10px', borderRadius: '10px', border: '1px solid #e2e8f0', outline: 'none', color: '#0f172a', fontSize: '13.5px' }}
+                  rows="4"
+                  value={newAnswer}
+                  onChange={(e) => setNewAnswer(e.target.value)}
+                  placeholder="Provide the key answer points or sample response..."
+                  style={{
+                    width: '100%',
+                    padding: '12px',
+                    borderRadius: '10px',
+                    border: '1px solid #e2e8f0',
+                    outline: 'none',
+                    fontSize: '13.5px',
+                    color: '#0f172a',
+                    fontFamily: 'inherit',
+                    resize: 'none'
+                  }}
                 />
               </div>
 
